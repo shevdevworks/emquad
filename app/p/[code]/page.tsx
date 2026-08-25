@@ -1,15 +1,7 @@
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { render } from '@/lib/poster/render';
-import { FIXTURES, type FixtureCode } from '@/lib/poster/fixtures';
-
-function isFixtureCode(code: string): code is FixtureCode {
-  return code in FIXTURES;
-}
-
-export function generateStaticParams(): { code: FixtureCode }[] {
-  return (Object.keys(FIXTURES) as FixtureCode[]).map((code) => ({ code }));
-}
+import { getPosterByCode } from '@/lib/db/queries';
 
 export async function generateMetadata({
   params,
@@ -17,11 +9,12 @@ export async function generateMetadata({
   params: Promise<{ code: string }>;
 }): Promise<Metadata> {
   const { code } = await params;
-  if (!isFixtureCode(code)) return {};
-  const spec = FIXTURES[code];
+  const row = await getPosterByCode(code);
+  if (!row) return {};
   return {
-    title: spec.phrase,
-    description: `A typographic poster: "${spec.phrase}"`,
+    title: row.phrase,
+    description: `A typographic poster: "${row.phrase}"`,
+    robots: { index: false, follow: false },
   };
 }
 
@@ -31,10 +24,10 @@ export default async function Page({
   params: Promise<{ code: string }>;
 }) {
   const { code } = await params;
-  if (!isFixtureCode(code)) notFound();
+  const row = await getPosterByCode(code);
+  if (!row) notFound();
 
-  const spec = FIXTURES[code];
-  const svg = render(spec);
+  const svg = render({ phrase: row.phrase, params: row.params });
 
   return (
     <div className="flex flex-1 items-center justify-center p-8">

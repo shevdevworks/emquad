@@ -1,18 +1,10 @@
 import { ImageResponse } from 'next/og';
 import { render } from '@/lib/poster/render';
-import { FIXTURES, type FixtureCode } from '@/lib/poster/fixtures';
-
-function isFixtureCode(code: string): code is FixtureCode {
-  return code in FIXTURES;
-}
+import { getPosterByCode } from '@/lib/db/queries';
 
 export const alt = 'Emquad poster';
 export const size = { width: 1200, height: 630 };
 export const contentType = 'image/png';
-
-export function generateStaticParams(): { code: FixtureCode }[] {
-  return (Object.keys(FIXTURES) as FixtureCode[]).map((code) => ({ code }));
-}
 
 export default async function Image({
   params,
@@ -20,12 +12,12 @@ export default async function Image({
   params: Promise<{ code: string }>;
 }) {
   const { code } = await params;
-  if (!isFixtureCode(code)) {
+  const row = await getPosterByCode(code);
+  if (!row) {
     return new Response('Not Found', { status: 404 });
   }
 
-  const spec = FIXTURES[code];
-  const svg = render(spec);
+  const svg = render({ phrase: row.phrase, params: row.params });
   const svgDataUrl = `data:image/svg+xml;base64,${Buffer.from(svg, 'utf-8').toString('base64')}`;
 
   return new ImageResponse(

@@ -9,6 +9,19 @@ import {
 } from './types';
 
 /**
+ * Single canonical place a phrase is cleaned before validation or storage.
+ * Drops format/control characters (zero-width space, ZWJ/ZWNJ, BOM, C0
+ * control codes) entirely, except the ones that are also regular whitespace
+ * (tab, LF, CR, FF, VT), which collapse into a single ordinary space instead.
+ */
+export function normalizePhrase(phrase: string): string {
+  const visibleOnly = Array.from(phrase)
+    .filter((ch) => !/\p{Cf}|\p{Cc}/u.test(ch) || /\s/.test(ch))
+    .join('');
+  return visibleOnly.replace(/\s+/g, ' ').trim();
+}
+
+/**
  * Single canonical place a phrase is split into words. Every module that
  * needs the word list (validation, the stack mode) goes through this.
  */
