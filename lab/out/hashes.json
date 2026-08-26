@@ -1,0 +1,23 @@
+{
+  "color-invert-off-accent-off": "83002693199cd06438bde48c4ab3c3907d1634918f27d9b3a74ce105162e3f92",
+  "color-invert-off-accent-on": "4a1dedee2d15099189cbbf9d6d8efc090aaa75c087294e366ee9bce571eac4f9",
+  "color-invert-on-accent-off": "31dec1d1330e6238c75394ee3bd2e4b4efdb767f8cd370e0c5afc7473ddde6a9",
+  "color-invert-on-accent-on": "27becf2e312a7adae563cca7201d1950c872c01ed7e4386c4d85e753c651ad35",
+  "fixture-demo1": "c66c28a4cd65db50d7e57acd14f8b5cb3a02dabd438b7e80b80f2face06d8e64",
+  "fixture-demo2": "d3d5fc72b5ea4663df122c21e94223d7c1d983e850d347ab7aec4a8936a59a24",
+  "fixture-demo3": "5538eec16b9055d7f6df3d85faa57cb499dcbdf85019edb4467a5f7bb2bdb035",
+  "fixture-demo4": "8407d5e54d5050271f1a02784ae176e02225e435df694988829fe1cecfc8637e",
+  "geometry-make-more-than-you-can-ever-use-airy": "debf778f676898efda1c7a5a85c2d2681b892f682e3c6fc0df92ea77da41ad2c",
+  "geometry-make-more-than-you-can-ever-use-regular": "c14b82352e9a6ec4a83341742423568b19bffbb876fdb9251d82f117c13231f5",
+  "geometry-make-more-than-you-can-ever-use-tight": "20b0e89c2bbda13361ac22ee27097998fa922b363c326bb1349c45cff15f982b",
+  "geometry-stay-weird-forever-airy": "e74ac1ef1579720794cf69d0d0c3123fc142bc9cea4e045c3dd372ed9e556e66",
+  "geometry-stay-weird-forever-regular": "83002693199cd06438bde48c4ab3c3907d1634918f27d9b3a74ce105162e3f92",
+  "geometry-stay-weird-forever-tight": "3f6793cd6f9e09d60d989527945a03261b15157d7a0dcf7f2ab9b046b3e3adc3",
+  "geometry-tisha-trymaye-formu-airy": "99db8a931a8a11179960142626ab57278dc899651bc03c050ff9d6dec229aedd",
+  "geometry-tisha-trymaye-formu-regular": "bef8c3b7eb7c9690ad10a19407a7240e46210cac9a385809125298cdac2b0ded",
+  "geometry-tisha-trymaye-formu-tight": "73290f28272079dc05374381adb20fba2dbfc0decad9492c8376c72d3fe49669",
+  "grain-0": "9e658e35c2a00f1ce9d4f2e31dcf0a57232d792e7de492eccd8be5276b5f9a83",
+  "grain-1": "83002693199cd06438bde48c4ab3c3907d1634918f27d9b3a74ce105162e3f92",
+  "grain-2": "c66c28a4cd65db50d7e57acd14f8b5cb3a02dabd438b7e80b80f2face06d8e64",
+  "grain-3": "c080cb2fa2d2ef4231e2455869db03f8627c576689da66d8cde5315beecd1d5f"
+}

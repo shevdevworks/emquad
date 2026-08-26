@@ -45,3 +45,7 @@ next-env.d.ts
 
 # playwright mcp session output
 .playwright-mcp/
+
+# poster composition lab: generated per-run, hashes.json is tracked
+lab/out/*.svg
+lab/out/index.html

@@ -1,4 +1,5 @@
 import { POSTER_HEIGHT, POSTER_WIDTH, type Density, type GrainLevel } from '../types';
+import { getInkBounds } from '../glyph-bounds';
 import onestGlyphs from '../onest-glyphs.json';
 
 interface FontMetrics {
@@ -17,18 +18,39 @@ interface FontMetrics {
 // any value.
 const METRICS = onestGlyphs as unknown as Record<'500' | '800', FontMetrics>;
 
-const DENSITY_METRICS: Record<Density, { marginX: number; marginY: number; gap: number }> = {
-  tight: { marginX: 64, marginY: 96, gap: 8 },
-  regular: { marginX: 96, marginY: 160, gap: 24 },
-  airy: { marginX: 140, marginY: 260, gap: 56 },
+// Vertical margins are fixed regardless of density - the asymmetry (top
+// tighter than bottom) is a deliberate optical correction, not meant to be
+// balanced out.
+const MARGIN_TOP_RATIO = 0.06;
+const MARGIN_BOTTOM_RATIO = 0.075;
+const MARGIN_TOP = POSTER_HEIGHT * MARGIN_TOP_RATIO;
+const MARGIN_BOTTOM = POSTER_HEIGHT * MARGIN_BOTTOM_RATIO;
+const AVAILABLE = POSTER_HEIGHT - MARGIN_TOP - MARGIN_BOTTOM;
+
+// gapCapFraction bounds how much of the canvas height a single interline
+// gap may grow by, as a share of the whole canvas (not of any row's font
+// size - rows in one block can have very different sizes, and gaps must
+// stay uniform across the block). It exists to stop short phrases from
+// spreading into a sparse ladder of widely separated lines.
+const DENSITY_METRICS: Record<Density, { marginX: number; gapCapFraction: number }> = {
+  tight: { marginX: 64, gapCapFraction: 0.02 },
+  regular: { marginX: 96, gapCapFraction: 0.05 },
+  airy: { marginX: 140, gapCapFraction: 0.09 },
 };
 
-const GRAIN_RECT_COUNT: Record<GrainLevel, number> = {
+const GRAIN_COUNT: Record<GrainLevel, number> = {
   0: 0,
-  1: 220,
-  2: 460,
-  3: 820,
+  1: 200,
+  2: 450,
+  3: 900,
 };
+
+const GRAIN_CELL_MIN = 5;
+const GRAIN_CELL_MAX = 14;
+const GRAIN_OPACITY_MIN = 0.06;
+const GRAIN_OPACITY_MAX = 0.2;
+const GRAIN_OPACITY_BUCKETS = [0.08, 0.12, 0.16, 0.2] as const;
+const GRAIN_OPACITY_STEP = 0.04;
 
 export interface StackColors {
   readonly ink: string;
@@ -115,8 +137,24 @@ interface Row {
   readonly words: readonly RowWord[];
   readonly fontSize: number;
   readonly rowHeight: number;
+  /** Ink-space left bearing of the row's first glyph, in per-mille of em. */
+  readonly leftBearingFirst: number;
+  /** Topmost ink Y across every glyph in the row, in per-mille of em. */
+  readonly rowInkTop: number;
+  /** Bottommost ink Y across every glyph in the row, in per-mille of em. */
+  readonly rowInkBottom: number;
 }
 
+/**
+ * Builds one row per group. `fontSize` is solved so the row's painted ink -
+ * from the left edge of the first glyph's ink to the right edge of the last
+ * glyph's ink - fills `targetWidth` exactly, rather than the row's raw
+ * advance sum (which leaves left/right side-bearings unaccounted for and
+ * makes rows drift out of alignment with each other). `rowInkTop`/
+ * `rowInkBottom` scan every glyph in the row, not just the first/last,
+ * since letterform overshoot (round glyphs like O/S/C/G) can land on any
+ * character.
+ */
 function buildRows(
   groups: readonly number[][],
   words: readonly string[],
@@ -124,6 +162,7 @@ function buildRows(
   spaceWidth: number,
   targetWidth: number,
   capHeight: number,
+  advances: Readonly<Record<string, number>>,
 ): Row[] {
   return groups.map((group) => {
     const rowWords: RowWord[] = group.map((index) => ({
@@ -133,9 +172,30 @@ function buildRows(
     }));
     const rowNaturalWidth =
       rowWords.reduce((sum, w) => sum + w.naturalWidth, 0) + (rowWords.length - 1) * spaceWidth;
-    const fontSize = (targetWidth * 1000) / rowNaturalWidth;
+
+    const firstChar = rowWords[0].text[0];
+    const lastWordText = rowWords[rowWords.length - 1].text;
+    const lastChar = lastWordText[lastWordText.length - 1];
+    const firstBounds = getInkBounds('800', firstChar);
+    const lastBounds = getInkBounds('800', lastChar);
+    const leftBearingFirst = firstBounds.x0;
+    const rightBearingLast = (advances[lastChar] ?? 500) - lastBounds.x1;
+    const inkMeasure = rowNaturalWidth - leftBearingFirst - rightBearingLast;
+
+    const fontSize = (targetWidth * 1000) / inkMeasure;
     const rowHeight = (fontSize * capHeight) / 1000;
-    return { words: rowWords, fontSize, rowHeight };
+
+    let rowInkTop = Infinity;
+    let rowInkBottom = -Infinity;
+    for (const w of rowWords) {
+      for (const char of w.text) {
+        const bounds = getInkBounds('800', char);
+        if (bounds.y0 < rowInkTop) rowInkTop = bounds.y0;
+        if (bounds.y1 > rowInkBottom) rowInkBottom = bounds.y1;
+      }
+    }
+
+    return { words: rowWords, fontSize, rowHeight, leftBearingFirst, rowInkTop, rowInkBottom };
   });
 }
 
@@ -143,76 +203,133 @@ function blockHeightOf(rows: readonly Row[], gap: number): number {
   return rows.reduce((sum, row) => sum + row.rowHeight, 0) + gap * (rows.length - 1);
 }
 
+/**
+ * Block height measured from the actual ink top of the first row to the
+ * actual ink bottom of the last row, not from their nominal capHeight-based
+ * row boxes. Interline leading between rows still uses capHeight (normal
+ * typographic practice); only the two outer edges - the ones measured
+ * against the canvas margins - need to be exact.
+ */
+function naturalInkHeight(rows: readonly Row[], gap: number): number {
+  const firstRow = rows[0];
+  const lastRow = rows[rows.length - 1];
+  const firstAscent = -firstRow.rowInkTop * (firstRow.fontSize / 1000);
+  const lastDescent = lastRow.rowInkBottom * (lastRow.fontSize / 1000);
+  return firstAscent + (blockHeightOf(rows, gap) - firstRow.rowHeight) + lastDescent;
+}
+
+function computeBaselines(rows: readonly Row[], blockTop: number, gapEach: number): number[] {
+  const firstAscent = -rows[0].rowInkTop * (rows[0].fontSize / 1000);
+  const baselines = [blockTop + firstAscent];
+  for (let i = 1; i < rows.length; i++) {
+    baselines.push(baselines[i - 1] + gapEach + rows[i].rowHeight);
+  }
+  return baselines;
+}
+
+function quantizeOpacity(draw: number): number {
+  const index = Math.round((draw - GRAIN_OPACITY_BUCKETS[0]) / GRAIN_OPACITY_STEP);
+  return GRAIN_OPACITY_BUCKETS[Math.min(GRAIN_OPACITY_BUCKETS.length - 1, Math.max(0, index))];
+}
+
+function renderGrain(grain: GrainLevel, seed: number, ink: string): string {
+  const count = GRAIN_COUNT[grain];
+  if (count === 0) return '';
+
+  const rng = mulberry32(seed);
+  const buckets = new Map<number, string[]>();
+
+  for (let i = 0; i < count; i++) {
+    const x = rng() * POSTER_WIDTH;
+    const y = rng() * POSTER_HEIGHT;
+    const size = GRAIN_CELL_MIN + rng() * (GRAIN_CELL_MAX - GRAIN_CELL_MIN);
+    const opacityDraw = GRAIN_OPACITY_MIN + rng() * (GRAIN_OPACITY_MAX - GRAIN_OPACITY_MIN);
+    const opacity = quantizeOpacity(opacityDraw);
+
+    const cell = `M${x.toFixed(1)},${y.toFixed(1)}h${size.toFixed(1)}v${size.toFixed(1)}h${(-size).toFixed(1)}z`;
+    const bucket = buckets.get(opacity);
+    if (bucket === undefined) {
+      buckets.set(opacity, [cell]);
+    } else {
+      bucket.push(cell);
+    }
+  }
+
+  const parts: string[] = [];
+  for (const opacity of GRAIN_OPACITY_BUCKETS) {
+    const cells = buckets.get(opacity);
+    if (cells === undefined) continue;
+    parts.push(`<path d="${cells.join('')}" fill="${ink}" fill-opacity="${opacity}"/>`);
+  }
+  return parts.join('');
+}
+
 export function renderStack(input: RenderStackInput): string {
   const { density, grain, seed, accentIndex, colors } = input;
   const words = input.words.map((w) => w.toUpperCase());
-  const { marginX, marginY, gap } = DENSITY_METRICS[density];
+  const { marginX, gapCapFraction } = DENSITY_METRICS[density];
   const targetWidth = POSTER_WIDTH - 2 * marginX;
-  const available = POSTER_HEIGHT - 2 * marginY;
   const metrics = METRICS['800'];
   const spaceWidth = metrics.advances[' '] ?? 500;
   const widths = words.map((w) => wordNaturalWidth(w, metrics.advances));
 
   let bestRows: Row[] | null = null;
-  let bestBlockHeight = -Infinity;
+  let bestNaturalInk = -Infinity;
 
   for (let l = 1; l <= words.length; l++) {
     const groups = groupWords(widths, spaceWidth, l);
-    const rows = buildRows(groups, words, widths, spaceWidth, targetWidth, metrics.capHeight);
-    const height = blockHeightOf(rows, gap);
-    if (height <= available && height > bestBlockHeight) {
+    const rows = buildRows(groups, words, widths, spaceWidth, targetWidth, metrics.capHeight, metrics.advances);
+    const naturalInk = naturalInkHeight(rows, 0);
+    if (naturalInk <= AVAILABLE && naturalInk > bestNaturalInk) {
       bestRows = rows;
-      bestBlockHeight = height;
+      bestNaturalInk = naturalInk;
     }
   }
 
   let rows: Row[];
-  let blockHeight: number;
+  let naturalInk: number;
 
   if (bestRows !== null) {
     rows = bestRows;
-    blockHeight = bestBlockHeight;
+    naturalInk = bestNaturalInk;
   } else {
-    // Emergency fallback: not even the shortest possible arrangement (all
-    // words on one row) fits. Force one word per row (the tallest, most
-    // "stack"-like shape) and scale every row's font size down so the
-    // fixed gaps plus the scaled row heights land exactly on `available`.
+    // Emergency fallback: not even one word per row fits at zero gap. Force
+    // one word per row (the tallest, most "stack"-like shape) and scale
+    // every row's fontSize/rowHeight down by the same factor so the
+    // ink-corrected block height lands exactly on AVAILABLE.
     const groups = groupWords(widths, spaceWidth, words.length);
-    const naturalRows = buildRows(groups, words, widths, spaceWidth, targetWidth, metrics.capHeight);
-    const naturalRowHeightSum = naturalRows.reduce((sum, row) => sum + row.rowHeight, 0);
-    const k = (available - gap * (naturalRows.length - 1)) / naturalRowHeightSum;
+    const naturalRows = buildRows(groups, words, widths, spaceWidth, targetWidth, metrics.capHeight, metrics.advances);
+    const k = AVAILABLE / naturalInkHeight(naturalRows, 0);
     rows = naturalRows.map((row) => ({
-      words: row.words,
+      ...row,
       fontSize: row.fontSize * k,
       rowHeight: row.rowHeight * k,
     }));
-    blockHeight = blockHeightOf(rows, gap);
+    naturalInk = naturalInkHeight(rows, 0);
   }
 
-  const blockTop = (POSTER_HEIGHT - blockHeight) / 2;
+  const gapCount = rows.length - 1;
+  const freeSpace = AVAILABLE - naturalInk;
+  const maxGapAddition = gapCapFraction * POSTER_HEIGHT;
+  const gapEach = gapCount > 0 ? Math.min(freeSpace / gapCount, maxGapAddition) : 0;
+  const blockHeight = naturalInk + gapEach * gapCount;
+  const leftover = AVAILABLE - blockHeight;
+  const blockTop = MARGIN_TOP + leftover * (MARGIN_TOP / (MARGIN_TOP + MARGIN_BOTTOM));
+  const baselines = computeBaselines(rows, blockTop, gapEach);
 
   const textParts: string[] = [];
-  let cursor = blockTop;
 
-  for (const row of rows) {
-    const baselineY = cursor + row.rowHeight;
-    cursor += row.rowHeight + gap;
-
-    const renderedWidths = row.words.map((w) => (w.naturalWidth * row.fontSize) / 1000);
-    const renderedWidthSum = renderedWidths.reduce((a, b) => a + b, 0);
-    const remainder = targetWidth - renderedWidthSum;
-    const gapWidth = row.words.length > 1 ? remainder / (row.words.length - 1) : 0;
-
+  for (let ri = 0; ri < rows.length; ri++) {
+    const row = rows[ri];
+    const baselineY = baselines[ri];
     const scale = row.fontSize / 1000;
 
-    let x = marginX;
+    let penX = marginX - row.leftBearingFirst * scale;
     for (let j = 0; j < row.words.length; j++) {
       const word = row.words[j];
-      const renderedWidth = renderedWidths[j];
       const fill = word.index === accentIndex ? colors.accent : colors.ink;
 
       const glyphParts: string[] = [];
-      let penX = x;
       for (const char of word.text) {
         const advance = metrics.advances[char] ?? 500;
         const path = metrics.paths[char];
@@ -225,24 +342,11 @@ export function renderStack(input: RenderStackInput): string {
       }
       textParts.push(`<g fill="${fill}">${glyphParts.join('')}</g>`);
 
-      x += renderedWidth + gapWidth;
+      if (j < row.words.length - 1) {
+        penX += spaceWidth * scale;
+      }
     }
   }
 
-  const grainParts: string[] = [];
-  const rectCount = GRAIN_RECT_COUNT[grain];
-  if (rectCount > 0) {
-    const rng = mulberry32(seed);
-    for (let i = 0; i < rectCount; i++) {
-      const gx = rng() * POSTER_WIDTH;
-      const gy = rng() * POSTER_HEIGHT;
-      const size = 1 + rng() * 2;
-      const opacity = 0.05 + rng() * 0.13;
-      grainParts.push(
-        `<rect x="${gx.toFixed(2)}" y="${gy.toFixed(2)}" width="${size.toFixed(2)}" height="${size.toFixed(2)}" fill="${colors.ink}" fill-opacity="${opacity.toFixed(2)}"/>`,
-      );
-    }
-  }
-
-  return grainParts.join('') + textParts.join('');
+  return renderGrain(grain, seed, colors.ink) + textParts.join('');
 }
