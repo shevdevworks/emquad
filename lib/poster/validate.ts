@@ -1,9 +1,16 @@
 import {
   AVAILABLE_MODES,
+  DEFAULT_PARAMS,
+  DENSITIES,
+  GRAIN_LEVELS,
   MAX_CHARS,
   MAX_SEED,
   MAX_WORDS,
   MIN_WORDS,
+  MODES,
+  type Density,
+  type GrainLevel,
+  type Mode,
   type PosterParams,
   type PosterSpec,
 } from './types';
@@ -29,6 +36,54 @@ export function splitWords(phrase: string): string[] {
   const trimmed = phrase.trim();
   if (trimmed.length === 0) return [];
   return trimmed.split(/\s+/);
+}
+
+/**
+ * Single canonical place every PosterParams field is coerced from untrusted
+ * input (a Server Action's raw argument, or a string pulled out of
+ * URLSearchParams). DEFAULT_PARAMS is the only fallback source - no literal
+ * stands in for a default value anywhere below.
+ */
+function toNumber(value: unknown): number {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string') return Number(value);
+  return NaN;
+}
+
+export function toInvert(value: unknown): boolean {
+  if (typeof value === 'boolean') return value;
+  if (value === 'true') return true;
+  return DEFAULT_PARAMS.invert; // covers the string 'false' too - it must not become true
+}
+
+export function toMode(value: unknown): Mode {
+  return typeof value === 'string' && (MODES as readonly string[]).includes(value)
+    ? (value as Mode) // narrowed by the .includes check above against MODES itself
+    : DEFAULT_PARAMS.mode;
+}
+
+export function toDensity(value: unknown): Density {
+  return typeof value === 'string' && (DENSITIES as readonly string[]).includes(value)
+    ? (value as Density) // narrowed by the .includes check above against DENSITIES itself
+    : DEFAULT_PARAMS.density;
+}
+
+export function toGrain(value: unknown): GrainLevel {
+  const n = toNumber(value);
+  return (GRAIN_LEVELS as readonly number[]).includes(n)
+    ? (n as GrainLevel) // narrowed by the .includes check above against GRAIN_LEVELS itself
+    : DEFAULT_PARAMS.grain;
+}
+
+export function toAccent(value: unknown): number | null {
+  if (value === null) return DEFAULT_PARAMS.accent;
+  const n = toNumber(value);
+  return Number.isInteger(n) ? n : -1; // -1 always fails validateParams's range check, triggering fallback
+}
+
+export function toSeed(value: unknown): number {
+  const n = toNumber(value);
+  return Number.isInteger(n) ? n : -1; // -1 always fails validateParams's range check, triggering fallback
 }
 
 export type ValidationIssue =

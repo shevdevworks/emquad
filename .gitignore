@@ -42,3 +42,6 @@ next-env.d.ts
 
 # local verification output
 .tmp/
+
+# playwright mcp session output
+.playwright-mcp/

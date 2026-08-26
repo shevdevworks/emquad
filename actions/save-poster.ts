@@ -1,17 +1,19 @@
 'use server';
 
-import { normalizePhrase, validatePosterSpec, type ValidationIssue } from '@/lib/poster/validate';
-import { insertPoster } from '@/lib/db/queries';
+import { redirect } from 'next/navigation';
 import {
-  DENSITIES,
-  GRAIN_LEVELS,
-  MODES,
-  PARAMS_VERSION,
-  type Density,
-  type GrainLevel,
-  type Mode,
-  type PosterParams,
-} from '@/lib/poster/types';
+  normalizePhrase,
+  toAccent,
+  toDensity,
+  toGrain,
+  toInvert,
+  toMode,
+  toSeed,
+  validatePosterSpec,
+  type ValidationIssue,
+} from '@/lib/poster/validate';
+import { insertPoster } from '@/lib/db/queries';
+import { PARAMS_VERSION, type PosterParams } from '@/lib/poster/types';
 
 export type SavePosterResult =
   | { readonly ok: true; readonly code: string }
@@ -29,38 +31,11 @@ export interface RawPosterParams {
   readonly seed?: unknown;
 }
 
-function toMode(value: unknown): Mode {
-  return typeof value === 'string' && (MODES as readonly string[]).includes(value)
-    ? (value as Mode) // narrowed by the .includes check above against MODES itself
-    : 'break'; // any Mode other than 'stack' fails validateParams's availability check the same way
-}
-
-function toDensity(value: unknown): Density {
-  return typeof value === 'string' && (DENSITIES as readonly string[]).includes(value)
-    ? (value as Density) // narrowed by the .includes check above against DENSITIES itself
-    : 'regular';
-}
-
-function toGrain(value: unknown): GrainLevel {
-  return typeof value === 'number' && (GRAIN_LEVELS as readonly number[]).includes(value)
-    ? (value as GrainLevel) // narrowed by the .includes check above against GRAIN_LEVELS itself
-    : 1; // matches DEFAULT_PARAMS.grain
-}
-
-function toAccent(value: unknown): number | null {
-  if (value === null) return null;
-  return typeof value === 'number' && Number.isInteger(value) ? value : -1; // -1 always fails the [0, wordCount) range check
-}
-
-function toSeed(value: unknown): number {
-  return typeof value === 'number' && Number.isInteger(value) ? value : -1; // -1 always fails the [0, MAX_SEED] range check
-}
-
 function normalizeParams(raw: RawPosterParams): PosterParams {
   return {
     v: PARAMS_VERSION,
     mode: toMode(raw.mode),
-    invert: Boolean(raw.invert),
+    invert: toInvert(raw.invert),
     accent: toAccent(raw.accent),
     density: toDensity(raw.density),
     grain: toGrain(raw.grain),
@@ -85,5 +60,5 @@ export async function savePoster(phrase: string, params: RawPosterParams): Promi
   }
 
   const row = await insertPoster(spec);
-  return { ok: true, code: row.code };
+  redirect(`/p/${row.code}`);
 }
