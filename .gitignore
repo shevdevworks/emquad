@@ -49,3 +49,6 @@ next-env.d.ts
 # poster composition lab: generated per-run, hashes.json is tracked
 lab/out/*.svg
 lab/out/index.html
+
+# poster composition lab: previous-run snapshot for before/after diffing
+lab/prev/
