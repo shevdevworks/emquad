@@ -27,6 +27,9 @@ const MARGIN_TOP = POSTER_HEIGHT * MARGIN_TOP_RATIO;
 const MARGIN_BOTTOM = POSTER_HEIGHT * MARGIN_BOTTOM_RATIO;
 const AVAILABLE = POSTER_HEIGHT - MARGIN_TOP - MARGIN_BOTTOM;
 
+/** bottomMargin / topMargin, an exact invariant of the block placement formula below. */
+export const MARGIN_RATIO = MARGIN_BOTTOM_RATIO / MARGIN_TOP_RATIO;
+
 // gapCapFraction bounds how much of the canvas height a single interline
 // gap may grow by, as a share of the whole canvas (not of any row's font
 // size - rows in one block can have very different sizes, and gaps must

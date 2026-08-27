@@ -4,22 +4,34 @@ import * as crypto from 'node:crypto';
 
 import { DENSITIES, POSTER_HEIGHT, POSTER_WIDTH, type Density, type PosterSpec } from '../lib/poster/types';
 import { render } from '../lib/poster/render';
+import { MARGIN_RATIO } from '../lib/poster/modes/stack';
+import { GIANT_MIN_INK_WIDTH_PX, MIN_GIANT_BLOCK_GAP_PX } from '../lib/poster/modes/break';
 import { CASES } from './cases';
 import {
   checkBleed,
+  checkBlockLineSpacing,
   checkDeterminism,
   checkEdgeConvergence,
+  checkGiantBlockGap,
+  checkGiantMinWidth,
   checkParserSync,
+  checkSingleSidedHorizontalBleed,
   checkStructure,
   checkVerticalMargins,
   collectRows,
   countGlyphPaths,
+  splitGiantRow,
   type ToleranceMetric,
+  type VerticalMarginsResult,
 } from './checks';
 import { renderSheet, type SheetBeforeAfterRow, type SheetCard, type SheetGroup } from './sheet';
 
 const DEFAULT_EDGE_CONVERGENCE_PERCENT = 0.5;
-const DEFAULT_VERTICAL_PERCENT = 1;
+// Percent deviation of the bottom/top margin ratio tolerated from its
+// expected value — generous relative to the ~0.001% drift toFixed rounding
+// actually produces, so it catches formula regressions without ever being
+// noisy on correct output. See checks.ts's checkVerticalMargins.
+const DEFAULT_VERTICAL_RATIO_PERCENT = 2;
 
 const args = process.argv.slice(2);
 const strict = args.includes('--strict');
@@ -57,6 +69,13 @@ function fmtMetric(label: string, metric: ToleranceMetric, dimension: number): s
   return `${label}=${metric.value.toFixed(2)}px(${pct.toFixed(2)}%)${metric.ok ? '' : '!'}`;
 }
 
+function fmtVertical(v: VerticalMarginsResult, expectedRatio: number | null): string {
+  const ratioStr = v.ratio === null ? 'n/a' : v.ratio.toFixed(4);
+  const expectedStr = expectedRatio === null ? 'n/a' : expectedRatio.toFixed(4);
+  const devStr = v.metric.note ? v.metric.note : `${v.metric.value.toFixed(2)}%${v.metric.ok ? '' : '!'}`;
+  return `vertical(top=${v.topMarginPx.toFixed(2)} bottom=${v.bottomMarginPx.toFixed(2)} signedDiff=${v.signedDiffPx.toFixed(2)} ratio=${ratioStr} expected=${expectedStr} dev=${devStr})`;
+}
+
 interface CaseResult {
   readonly id: string;
   readonly svg: string;
@@ -74,6 +93,7 @@ let exactFailures = 0;
 let toleranceViolations = 0;
 
 for (const labCase of selectedCases) {
+  const isBreak = labCase.spec.params.mode === 'break';
   const svgA = render(labCase.spec);
   const svgB = render(labCase.spec);
 
@@ -84,17 +104,47 @@ for (const labCase of selectedCases) {
   const rows = collectRows(svgA);
 
   const edgePercent = labCase.thresholds?.edgeConvergencePercent ?? DEFAULT_EDGE_CONVERGENCE_PERCENT;
-  const verticalPercent = labCase.thresholds?.verticalPercent ?? DEFAULT_VERTICAL_PERCENT;
+  const verticalPercent = labCase.thresholds?.verticalPercent ?? DEFAULT_VERTICAL_RATIO_PERCENT;
 
-  const { left, right } = checkEdgeConvergence(rows, edgePercent);
-  const vertical = checkVerticalMargins(svgA, verticalPercent);
+  const vertical = checkVerticalMargins(svgA, isBreak ? null : MARGIN_RATIO, verticalPercent);
   const bleed = checkBleed(svgA, labCase.allowBleed ?? false);
 
   const exactViolations = [...structure.violations, ...determinism.violations, ...parserSync.violations];
   const exactOk = exactViolations.length === 0;
   if (!exactOk) exactFailures++;
 
-  const toleranceFails = [left.ok, right.ok, vertical.metric.ok, bleed.ok].filter((ok) => !ok).length;
+  let extraFields: string[];
+  let toleranceChecks: boolean[];
+
+  if (isBreak) {
+    const { blockRows } = splitGiantRow(rows);
+    const { left: edgeLeftBlock } = checkEdgeConvergence(blockRows, edgePercent);
+    const singleSided = checkSingleSidedHorizontalBleed(bleed);
+    const gap = checkGiantBlockGap(rows, MIN_GIANT_BLOCK_GAP_PX);
+    const lineSpacing = checkBlockLineSpacing(blockRows);
+    const giantWidth = checkGiantMinWidth(rows, GIANT_MIN_INK_WIDTH_PX);
+
+    extraFields = [
+      fmtMetric('edge-left-block', edgeLeftBlock, POSTER_WIDTH),
+      'edge-right=n/a (block ragged right)',
+      `bleed-side=${singleSided.side}(${singleSided.overflowPx.toFixed(2)}px)${singleSided.ok ? '' : '!'}`,
+      `block-gap=${gap.gapPx.toFixed(2)}px${gap.ok ? '' : '!'}`,
+      `line-gap=${lineSpacing.minGapPx.toFixed(2)}px${lineSpacing.ok ? '' : '!'}`,
+      `giant-width=${giantWidth.widthPx.toFixed(2)}px${giantWidth.ok ? '' : '!'}`,
+    ];
+    toleranceChecks = [edgeLeftBlock.ok, singleSided.ok, gap.ok, lineSpacing.ok, giantWidth.ok];
+  } else {
+    const { left, right } = checkEdgeConvergence(rows, edgePercent);
+    extraFields = [
+      fmtMetric('edge-left', left, POSTER_WIDTH),
+      fmtMetric('edge-right', right, POSTER_WIDTH),
+      `bleed=${bleed.ok ? 'ok' : 'FAIL'}(${bleed.violationCount}/${bleed.maxOverflowPx.toFixed(2)}px)`,
+    ];
+    toleranceChecks = [left.ok, right.ok, bleed.ok];
+  }
+  toleranceChecks.push(vertical.metric.ok);
+
+  const toleranceFails = toleranceChecks.filter((ok) => !ok).length;
   toleranceViolations += toleranceFails;
 
   fs.writeFileSync(path.join(outDir, `${labCase.id}.svg`), svgA, 'utf8');
@@ -120,10 +170,8 @@ for (const labCase of selectedCases) {
     `exact=${exactOk ? 'ok' : `FAIL:${exactViolations.join('; ')}`}`,
     `paths=${pathCount}`,
     `rows=${rows.length}`,
-    fmtMetric('edge-left', left, POSTER_WIDTH),
-    fmtMetric('edge-right', right, POSTER_WIDTH),
-    `vertical(top=${vertical.topMarginPx.toFixed(2)} bottom=${vertical.bottomMarginPx.toFixed(2)} ${fmtMetric('diff', vertical.metric, POSTER_HEIGHT)})`,
-    `bleed=${bleed.ok ? 'ok' : 'FAIL'}(${bleed.violationCount}/${bleed.maxOverflowPx.toFixed(2)}px)`,
+    ...extraFields,
+    fmtVertical(vertical, isBreak ? null : MARGIN_RATIO),
   ].join(' ');
   console.log(line);
 }
@@ -165,12 +213,35 @@ if (!filter) {
   }));
 
   const grainResults = results.filter((r) => r.id.startsWith('grain-'));
+
+  const breakGeometryResults = results.filter((r) => r.id.startsWith('break-') && !r.id.includes('accent'));
+  const breakPhraseOrder: string[] = [];
+  const breakByPhrase = new Map<string, CaseResult[]>();
+  for (const r of breakGeometryResults) {
+    if (!breakByPhrase.has(r.phrase)) {
+      breakByPhrase.set(r.phrase, []);
+      breakPhraseOrder.push(r.phrase);
+    }
+    breakByPhrase.get(r.phrase)!.push(r);
+  }
+  const breakPhraseGroups: SheetGroup[] = breakPhraseOrder.map((phrase) => ({
+    title: `Break — ${phrase}`,
+    cards: breakByPhrase
+      .get(phrase)!
+      .slice()
+      .sort((a, b) => DENSITIES.indexOf(a.density) - DENSITIES.indexOf(b.density))
+      .map(toCard),
+  }));
+  const breakAccentResults = results.filter((r) => r.id.startsWith('break-') && r.id.includes('accent'));
+
   const groups: SheetGroup[] = [
     ...phraseGroups,
     { title: 'Dust', cards: grainResults.map(toCard) },
     { title: 'Dust — 504px OG crop', cards: grainResults.map(toCard), fixedCellWidthPx: 504 },
     { title: 'Colour', cards: results.filter((r) => r.id.startsWith('color-')).map(toCard) },
     { title: 'Fixtures', cards: results.filter((r) => r.id.startsWith('fixture-')).map(toCard) },
+    ...breakPhraseGroups,
+    { title: 'Break — accent', cards: breakAccentResults.map(toCard) },
   ];
 
   const BEFORE_AFTER_IDS: readonly string[] = [
@@ -180,7 +251,9 @@ if (!filter) {
   ];
 
   function toPrevCard(id: string, svg: string): SheetCard {
-    const prevVertical = checkVerticalMargins(svg, DEFAULT_VERTICAL_PERCENT);
+    // Only stack ids are ever listed in BEFORE_AFTER_IDS, so the Stack margin
+    // ratio is always the right expectation here.
+    const prevVertical = checkVerticalMargins(svg, MARGIN_RATIO, DEFAULT_VERTICAL_RATIO_PERCENT);
     const prevMinY = prevVertical.topMarginPx;
     const prevMaxY = POSTER_HEIGHT - prevVertical.bottomMarginPx;
     return {
