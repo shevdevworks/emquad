@@ -1,5 +1,5 @@
 import { POSTER_HEIGHT, POSTER_WIDTH, type Density, type GrainLevel } from '../types';
-import { getInkBounds } from '../glyph-bounds';
+import { glyphPath, measureInk, renderGrain, wordNaturalWidth } from '../primitives';
 import onestGlyphs from '../onest-glyphs.json';
 
 interface FontMetrics {
@@ -41,20 +41,6 @@ const DENSITY_METRICS: Record<Density, { marginX: number; gapCapFraction: number
   airy: { marginX: 140, gapCapFraction: 0.09 },
 };
 
-const GRAIN_COUNT: Record<GrainLevel, number> = {
-  0: 0,
-  1: 200,
-  2: 450,
-  3: 900,
-};
-
-const GRAIN_CELL_MIN = 5;
-const GRAIN_CELL_MAX = 14;
-const GRAIN_OPACITY_MIN = 0.06;
-const GRAIN_OPACITY_MAX = 0.2;
-const GRAIN_OPACITY_BUCKETS = [0.08, 0.12, 0.16, 0.2] as const;
-const GRAIN_OPACITY_STEP = 0.04;
-
 export interface StackColors {
   readonly ink: string;
   readonly accent: string;
@@ -67,24 +53,6 @@ export interface RenderStackInput {
   readonly seed: number;
   readonly accentIndex: number | null;
   readonly colors: StackColors;
-}
-
-function mulberry32(seed: number): () => number {
-  let a = seed >>> 0;
-  return function next() {
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-function wordNaturalWidth(word: string, advances: Readonly<Record<string, number>>): number {
-  let width = 0;
-  for (const char of word) {
-    width += advances[char] ?? 500;
-  }
-  return width;
 }
 
 /**
@@ -176,27 +144,16 @@ function buildRows(
     const rowNaturalWidth =
       rowWords.reduce((sum, w) => sum + w.naturalWidth, 0) + (rowWords.length - 1) * spaceWidth;
 
-    const firstChar = rowWords[0].text[0];
-    const lastWordText = rowWords[rowWords.length - 1].text;
-    const lastChar = lastWordText[lastWordText.length - 1];
-    const firstBounds = getInkBounds('800', firstChar);
-    const lastBounds = getInkBounds('800', lastChar);
-    const leftBearingFirst = firstBounds.x0;
-    const rightBearingLast = (advances[lastChar] ?? 500) - lastBounds.x1;
-    const inkMeasure = rowNaturalWidth - leftBearingFirst - rightBearingLast;
+    const rowChars = rowWords.flatMap((w) => Array.from(w.text));
+    const {
+      inkMeasureEm: inkMeasure,
+      leftBearingFirst,
+      inkTop: rowInkTop,
+      inkBottom: rowInkBottom,
+    } = measureInk(rowChars, rowNaturalWidth, advances, '800');
 
     const fontSize = (targetWidth * 1000) / inkMeasure;
     const rowHeight = (fontSize * capHeight) / 1000;
-
-    let rowInkTop = Infinity;
-    let rowInkBottom = -Infinity;
-    for (const w of rowWords) {
-      for (const char of w.text) {
-        const bounds = getInkBounds('800', char);
-        if (bounds.y0 < rowInkTop) rowInkTop = bounds.y0;
-        if (bounds.y1 > rowInkBottom) rowInkBottom = bounds.y1;
-      }
-    }
 
     return { words: rowWords, fontSize, rowHeight, leftBearingFirst, rowInkTop, rowInkBottom };
   });
@@ -228,43 +185,6 @@ function computeBaselines(rows: readonly Row[], blockTop: number, gapEach: numbe
     baselines.push(baselines[i - 1] + gapEach + rows[i].rowHeight);
   }
   return baselines;
-}
-
-function quantizeOpacity(draw: number): number {
-  const index = Math.round((draw - GRAIN_OPACITY_BUCKETS[0]) / GRAIN_OPACITY_STEP);
-  return GRAIN_OPACITY_BUCKETS[Math.min(GRAIN_OPACITY_BUCKETS.length - 1, Math.max(0, index))];
-}
-
-function renderGrain(grain: GrainLevel, seed: number, ink: string): string {
-  const count = GRAIN_COUNT[grain];
-  if (count === 0) return '';
-
-  const rng = mulberry32(seed);
-  const buckets = new Map<number, string[]>();
-
-  for (let i = 0; i < count; i++) {
-    const x = rng() * POSTER_WIDTH;
-    const y = rng() * POSTER_HEIGHT;
-    const size = GRAIN_CELL_MIN + rng() * (GRAIN_CELL_MAX - GRAIN_CELL_MIN);
-    const opacityDraw = GRAIN_OPACITY_MIN + rng() * (GRAIN_OPACITY_MAX - GRAIN_OPACITY_MIN);
-    const opacity = quantizeOpacity(opacityDraw);
-
-    const cell = `M${x.toFixed(1)},${y.toFixed(1)}h${size.toFixed(1)}v${size.toFixed(1)}h${(-size).toFixed(1)}z`;
-    const bucket = buckets.get(opacity);
-    if (bucket === undefined) {
-      buckets.set(opacity, [cell]);
-    } else {
-      bucket.push(cell);
-    }
-  }
-
-  const parts: string[] = [];
-  for (const opacity of GRAIN_OPACITY_BUCKETS) {
-    const cells = buckets.get(opacity);
-    if (cells === undefined) continue;
-    parts.push(`<path d="${cells.join('')}" fill="${ink}" fill-opacity="${opacity}"/>`);
-  }
-  return parts.join('');
 }
 
 export function renderStack(input: RenderStackInput): string {
@@ -336,11 +256,8 @@ export function renderStack(input: RenderStackInput): string {
       for (const char of word.text) {
         const advance = metrics.advances[char] ?? 500;
         const path = metrics.paths[char];
-        if (path !== undefined) {
-          glyphParts.push(
-            `<path d="${path}" transform="translate(${penX.toFixed(2)} ${baselineY.toFixed(2)}) scale(${scale.toFixed(6)})"/>`,
-          );
-        }
+        const rendered = glyphPath(path, penX, baselineY, scale);
+        if (path !== undefined) glyphParts.push(rendered);
         penX += advance * scale;
       }
       textParts.push(`<g fill="${fill}">${glyphParts.join('')}</g>`);
