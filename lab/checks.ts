@@ -356,3 +356,184 @@ export function checkSingleSidedHorizontalBleed(bleed: BleedResult): SingleSided
   const overflowPx = hasLeft ? bleed.overflowLeftPx : bleed.overflowRightPx;
   return { ok: !hasVertical, side, overflowPx };
 }
+
+/* -------------------------------------------------------------------------- */
+/* Grid                                                                       */
+/* -------------------------------------------------------------------------- */
+
+export interface GridRect {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+}
+
+// Grid's fill/knockout rects: `<rect x="..." y="..." width="..." height="..." fill="..."/>`.
+// The canvas background rect (added by render.ts, outside mode content) has
+// no x/y attributes, so it structurally never matches this pattern.
+const GRID_RECT_RE = /<rect x="(-?[\d.]+)" y="(-?[\d.]+)" width="([\d.]+)" height="([\d.]+)" fill="[^"]*"\/>/g;
+
+export function parseGridRects(svg: string): GridRect[] {
+  const rects: GridRect[] = [];
+  for (const match of svg.matchAll(GRID_RECT_RE)) {
+    const [, xStr, yStr, wStr, hStr] = match;
+    rects.push({ x: Number(xStr), y: Number(yStr), width: Number(wStr), height: Number(hStr) });
+  }
+  return rects;
+}
+
+export function collectGlyphScales(svg: string): number[] {
+  return Array.from(svg.matchAll(PATH_RE)).map((match) => Number(match[4]));
+}
+
+/**
+ * grid.ts always emits its rects in a fixed order: the knockout plate (if
+ * any) first, then fills - so the split is purely positional, not derived
+ * from geometry. `hasAccent` should be `spec.params.accent !== null`.
+ */
+export interface GridSplitRects {
+  readonly knockout: GridRect | null;
+  readonly fills: readonly GridRect[];
+}
+
+export function splitGridRects(rects: readonly GridRect[], hasAccent: boolean): GridSplitRects {
+  if (!hasAccent || rects.length === 0) return { knockout: null, fills: rects };
+  return { knockout: rects[0], fills: rects.slice(1) };
+}
+
+export function checkGridSingleScale(scales: readonly number[]): ExactCheckResult {
+  const distinct = Array.from(new Set(scales.map((s) => s.toFixed(6))));
+  const violations =
+    distinct.length > 1
+      ? [`grid glyphs use ${distinct.length} distinct scales, expected exactly 1: ${distinct.join(', ')}`]
+      : [];
+  return { ok: violations.length === 0, violations };
+}
+
+export function checkGridModuleAlignment(rects: readonly GridRect[], cell: number): ExactCheckResult {
+  const violations: string[] = [];
+  for (const r of rects) {
+    if (r.x % cell !== 0 || r.y % cell !== 0 || r.width % cell !== 0 || r.height % cell !== 0) {
+      violations.push(`rect not module-aligned: x=${r.x} y=${r.y} width=${r.width} height=${r.height}`);
+    }
+  }
+  return { ok: violations.length === 0, violations };
+}
+
+function rectsIntersect(a: GridRect, b: GridRect): boolean {
+  return a.x < b.x + b.width && b.x < a.x + a.width && a.y < b.y + b.height && b.y < a.y + a.height;
+}
+
+function rowBBox(row: RowSpan): GridRect {
+  return { x: row.minX, y: row.minY, width: row.maxX - row.minX, height: row.maxY - row.minY };
+}
+
+/**
+ * The knockout plate is deliberately excluded from the word-ink overlap
+ * check: it sits under the accented word's glyphs by design, so overlap
+ * there is correct, not a defect. It is still checked against every fill,
+ * since fills are supposed to only ever claim free modules.
+ */
+export function checkGridNoOverlap(
+  fills: readonly GridRect[],
+  knockout: GridRect | null,
+  rows: readonly RowSpan[],
+): ExactCheckResult {
+  const violations: string[] = [];
+
+  for (let i = 0; i < fills.length; i++) {
+    for (let j = i + 1; j < fills.length; j++) {
+      if (rectsIntersect(fills[i], fills[j])) violations.push(`fill ${i} overlaps fill ${j}`);
+    }
+  }
+
+  for (const row of rows) {
+    const bbox = rowBBox(row);
+    for (let i = 0; i < fills.length; i++) {
+      if (rectsIntersect(fills[i], bbox)) violations.push(`fill ${i} overlaps word ink at row y=${row.key}`);
+    }
+  }
+
+  if (knockout !== null) {
+    for (let i = 0; i < fills.length; i++) {
+      if (rectsIntersect(fills[i], knockout)) violations.push(`fill ${i} overlaps knockout plate`);
+    }
+  }
+
+  return { ok: violations.length === 0, violations };
+}
+
+export interface GridBandResult {
+  readonly ok: boolean;
+  readonly minClearancePx: number;
+}
+
+/**
+ * Each grid row shares one baseline (see grid.ts), so its combined ink
+ * extent - not any single word's own height - is what must clear `padding`
+ * from both edges of its own 270px band.
+ */
+export function checkGridInkBand(rows: readonly RowSpan[], cell: number, padding: number): GridBandResult {
+  if (rows.length === 0) return { ok: true, minClearancePx: 0 };
+
+  let minClearancePx = Infinity;
+  for (const row of rows) {
+    const bandIndex = Math.floor((row.minY + row.maxY) / 2 / cell);
+    const bandTop = bandIndex * cell;
+    const bandBottom = bandTop + cell;
+    minClearancePx = Math.min(minClearancePx, row.minY - bandTop, bandBottom - row.maxY);
+  }
+
+  return { ok: minClearancePx >= padding - 0.5, minClearancePx };
+}
+
+export interface GridAntiStackResult {
+  readonly ok: boolean;
+  readonly narrowRowCount: number;
+  readonly totalRows: number;
+}
+
+/**
+ * Distinguishes Grid from Stack: at least half of Grid's rows must stay
+ * narrower than 0.75 of canvas width, since Grid rows are module-bound, not
+ * width-filling like Stack's.
+ */
+export function checkGridAntiStack(rows: readonly RowSpan[], canvasWidth: number): GridAntiStackResult {
+  if (rows.length === 0) return { ok: true, narrowRowCount: 0, totalRows: 0 };
+  const threshold = 0.75 * canvasWidth;
+  const narrowRowCount = rows.filter((r) => r.maxX - r.minX <= threshold).length;
+  return { ok: narrowRowCount >= Math.ceil(rows.length / 2), narrowRowCount, totalRows: rows.length };
+}
+
+export interface GridAccentCorridorResult {
+  readonly ok: boolean;
+  readonly fillModuleCount: number;
+  readonly upperBound: number;
+}
+
+// The largest single fill shape grid.ts can place (a 2x2 block). Slack on
+// top of fillCapModules, sized to this, absorbs two things by design, not
+// estimation: the guaranteed >=2-module first fill has priority over the
+// cap and always proceeds even if it alone exceeds it, and the cap is only
+// checked *before* each subsequent placement, so one more shape can still
+// land after the accumulated area was already just under the cap.
+const SHAPE_MAX_MODULES = 4;
+
+/**
+ * Fill area is density-capped via fillCapModules (grid.ts) now, not a raw
+ * fraction of free modules - this corridor's job is to catch a genuine
+ * regression (fills flooding most of the canvas) while tolerating the
+ * bounded, by-design overshoot described above. The lower bound (at least
+ * one fill) holds for every non-pathological case (some free modules
+ * exist).
+ */
+export function checkGridAccentCorridor(
+  fills: readonly GridRect[],
+  cell: number,
+  fillCapModules: number,
+): GridAccentCorridorResult {
+  const fillModuleCount = fills.reduce((sum, r) => sum + (r.width / cell) * (r.height / cell), 0);
+  const upperBound = fillCapModules + SHAPE_MAX_MODULES;
+  const ok = fillModuleCount >= 1 - 1e-9 && fillModuleCount <= upperBound + 1e-9;
+  return { ok, fillModuleCount, upperBound };
+}

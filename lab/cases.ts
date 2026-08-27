@@ -119,6 +119,89 @@ const breakAccentCases: LabCase[] = [
   },
 ];
 
+// Grid-only phrase set, kept separate from GEOMETRY_PHRASES (shared with
+// stack/break): adding coverage here must never change a stack-*/break-*
+// case or hash.
+const PHRASE_NOTHING_SAME = 'Nothing stays the same forever'; // 5 words
+const PHRASE_EXTRAORDINARY = 'This is extraordinarily unusual today'; // one deliberately long word, targets span === 4
+const PHRASE_TINY = 'I am fine'; // shortest possible MIN_WORDS phrase - degenerate single-row candidate
+// Second Cyrillic phrase, deliberately different in shape from PHRASE_TISHA:
+// its words are shorter and pack narrower (verified: 4/4 rows stay <= 0.75
+// canvas width), giving a comfortably anti-Stack-passing counterpart to
+// PHRASE_TISHA's tolerance-corridor case below.
+const PHRASE_TISHA_GRID = 'Тиша йде сама собою';
+
+const GRID_GEOMETRY_PHRASES: readonly { readonly slug: string; readonly phrase: string; readonly seed: number }[] = [
+  { slug: 'stay-weird-forever', phrase: PHRASE_STAY_WEIRD, seed: 7 }, // 3 words
+  { slug: 'nothing-stays-the-same-forever', phrase: PHRASE_NOTHING_SAME, seed: 11 }, // 5 words
+  { slug: 'make-more-than-you-can-ever-use', phrase: PHRASE_MAKE_MORE, seed: 42 }, // 7 words, MAX_WORDS
+  { slug: 'tisha-yde-sama-soboyu', phrase: PHRASE_TISHA_GRID, seed: 3 }, // Cyrillic coverage
+];
+
+const gridGeometryCases: LabCase[] = GRID_GEOMETRY_PHRASES.flatMap(({ slug, phrase, seed }) =>
+  (DENSITIES as readonly Density[]).map((density) => ({
+    id: `grid-${slug}-${density}`,
+    spec: spec(phrase, { mode: 'grid', density, invert: false, accent: null, seed }),
+  })),
+);
+
+const gridLongWordCase: LabCase = {
+  id: 'grid-long-word-span4',
+  spec: spec(PHRASE_EXTRAORDINARY, { mode: 'grid', density: 'regular', accent: null, seed: 5 }),
+};
+
+// Three long words at one shared kegl solve to three wide rows by
+// construction - that alone does not stop it from being Grid (ragged right
+// edge, module-aligned fills, still module-bound). This is the case that
+// keeps anti-Stack a tolerance check honest: a real, valid phrase that sits
+// outside its corridor.
+const gridTishaOriginalCase: LabCase = {
+  id: 'grid-tisha-trymaye-formu',
+  spec: spec(PHRASE_TISHA, { mode: 'grid', density: 'regular', accent: null, seed: 3 }),
+};
+
+const gridDegenerateCase: LabCase = {
+  // Fewest/narrowest words possible at MIN_WORDS - the candidate most
+  // likely to pack into a single word-row, exercising the "no empty row
+  // when there is no interior gap" rule.
+  id: 'grid-degenerate-single-row',
+  spec: spec(PHRASE_TINY, { mode: 'grid', density: 'regular', accent: null, seed: 2 }),
+};
+
+const gridAccentCases: LabCase[] = [
+  {
+    // Accents the first word.
+    id: 'grid-accent-knockout-first',
+    spec: spec(PHRASE_STAY_WEIRD, { mode: 'grid', density: 'regular', accent: 0, seed: 7 }),
+  },
+  {
+    // Accents the last word of the MAX_WORDS phrase.
+    id: 'grid-accent-knockout-last',
+    spec: spec(PHRASE_MAKE_MORE, { mode: 'grid', density: 'regular', accent: 6, seed: 42 }),
+  },
+  {
+    // Cyrillic accent word, exercising knockout with non-Latin glyphs.
+    id: 'grid-accent-knockout-cyrillic',
+    spec: spec(PHRASE_TISHA_GRID, { mode: 'grid', density: 'regular', accent: 1, seed: 3 }),
+  },
+];
+
+const gridInversionCase: LabCase = {
+  id: 'grid-invert',
+  spec: spec(PHRASE_STAY_WEIRD, { mode: 'grid', density: 'regular', invert: true, accent: null, seed: 7 }),
+};
+
+const gridGrainCases: LabCase[] = [0, 1, 2, 3].map((grain) => ({
+  id: `grid-grain-${grain}`,
+  spec: spec(PHRASE_STAY_WEIRD, {
+    mode: 'grid',
+    density: 'regular',
+    accent: null,
+    seed: 7,
+    grain: grain as 0 | 1 | 2 | 3,
+  }),
+}));
+
 export const CASES: readonly LabCase[] = [
   ...fixtureCases,
   ...geometryCases,
@@ -126,4 +209,11 @@ export const CASES: readonly LabCase[] = [
   ...grainCases,
   ...breakGeometryCases,
   ...breakAccentCases,
+  ...gridGeometryCases,
+  gridLongWordCase,
+  gridTishaOriginalCase,
+  gridDegenerateCase,
+  ...gridAccentCases,
+  gridInversionCase,
+  ...gridGrainCases,
 ];

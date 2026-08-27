@@ -6,6 +6,7 @@ import { DENSITIES, POSTER_HEIGHT, POSTER_WIDTH, type Density, type PosterSpec }
 import { render } from '../lib/poster/render';
 import { MARGIN_RATIO } from '../lib/poster/modes/stack';
 import { GIANT_MIN_INK_WIDTH_PX, MIN_GIANT_BLOCK_GAP_PX } from '../lib/poster/modes/break';
+import { CELL, DENSITY_METRICS as GRID_DENSITY_METRICS, PADDING as GRID_PADDING } from '../lib/poster/modes/grid';
 import { CASES } from './cases';
 import {
   checkBleed,
@@ -14,13 +15,22 @@ import {
   checkEdgeConvergence,
   checkGiantBlockGap,
   checkGiantMinWidth,
+  checkGridAccentCorridor,
+  checkGridAntiStack,
+  checkGridInkBand,
+  checkGridModuleAlignment,
+  checkGridNoOverlap,
+  checkGridSingleScale,
   checkParserSync,
   checkSingleSidedHorizontalBleed,
   checkStructure,
   checkVerticalMargins,
+  collectGlyphScales,
   collectRows,
   countGlyphPaths,
+  parseGridRects,
   splitGiantRow,
+  splitGridRects,
   type ToleranceMetric,
   type VerticalMarginsResult,
 } from './checks';
@@ -94,6 +104,7 @@ let toleranceViolations = 0;
 
 for (const labCase of selectedCases) {
   const isBreak = labCase.spec.params.mode === 'break';
+  const isGrid = labCase.spec.params.mode === 'grid';
   const svgA = render(labCase.spec);
   const svgB = render(labCase.spec);
 
@@ -106,15 +117,17 @@ for (const labCase of selectedCases) {
   const edgePercent = labCase.thresholds?.edgeConvergencePercent ?? DEFAULT_EDGE_CONVERGENCE_PERCENT;
   const verticalPercent = labCase.thresholds?.verticalPercent ?? DEFAULT_VERTICAL_RATIO_PERCENT;
 
-  const vertical = checkVerticalMargins(svgA, isBreak ? null : MARGIN_RATIO, verticalPercent);
+  // Grid has no page margins at all (the module grid runs to the canvas
+  // edge), so - like Break - it has no margin-ratio invariant to check;
+  // the measurement still runs, diagnostic-only.
+  const vertical = checkVerticalMargins(svgA, isBreak || isGrid ? null : MARGIN_RATIO, verticalPercent);
   const bleed = checkBleed(svgA, labCase.allowBleed ?? false);
 
-  const exactViolations = [...structure.violations, ...determinism.violations, ...parserSync.violations];
-  const exactOk = exactViolations.length === 0;
-  if (!exactOk) exactFailures++;
+  const baseExactViolations = [...structure.violations, ...determinism.violations, ...parserSync.violations];
 
   let extraFields: string[];
   let toleranceChecks: boolean[];
+  let gridExactViolations: string[] = [];
 
   if (isBreak) {
     const { blockRows } = splitGiantRow(rows);
@@ -133,6 +146,43 @@ for (const labCase of selectedCases) {
       `giant-width=${giantWidth.widthPx.toFixed(2)}px${giantWidth.ok ? '' : '!'}`,
     ];
     toleranceChecks = [edgeLeftBlock.ok, singleSided.ok, gap.ok, lineSpacing.ok, giantWidth.ok];
+  } else if (isGrid) {
+    const gridRects = parseGridRects(svgA);
+    const hasAccent = labCase.spec.params.accent !== null;
+    const { knockout, fills } = splitGridRects(gridRects, hasAccent);
+    const scales = collectGlyphScales(svgA);
+    const singleScale = checkGridSingleScale(scales);
+    const moduleAlignment = checkGridModuleAlignment(gridRects, CELL);
+    const noOverlap = checkGridNoOverlap(fills, knockout, rows);
+    const { fillCapModules } = GRID_DENSITY_METRICS[labCase.spec.params.density];
+    const inkBand = checkGridInkBand(rows, CELL, GRID_PADDING);
+    const antiStack = checkGridAntiStack(rows, POSTER_WIDTH);
+    const corridor = checkGridAccentCorridor(fills, CELL, fillCapModules);
+    const kegl = scales.length > 0 ? scales[0] * 1000 : 0;
+
+    extraFields = [
+      `kegl=${kegl.toFixed(2)}`,
+      `scale=${singleScale.ok ? 'single' : `FAIL:${singleScale.violations.join('; ')}`}`,
+      `module-align=${moduleAlignment.ok ? 'ok' : 'FAIL'}`,
+      `overlap=${noOverlap.ok ? 'ok' : `FAIL:${noOverlap.violations.join('; ')}`}`,
+      `ink-band=${inkBand.minClearancePx.toFixed(2)}px${inkBand.ok ? '' : '!'}`,
+      `anti-stack=${antiStack.narrowRowCount}/${antiStack.totalRows}${antiStack.ok ? '' : '!'}`,
+      `fills=${fills.length}(${corridor.fillModuleCount.toFixed(1)}mod<=${corridor.upperBound}mod)${corridor.ok ? '' : '!'}`,
+      `bleed=${bleed.ok ? 'ok' : 'FAIL'}(${bleed.violationCount}/${bleed.maxOverflowPx.toFixed(2)}px)`,
+    ];
+    // Per spec, module alignment, the single-scale invariant, no-overlap and
+    // the ink-within-band margin are exact (must always hold, not just under
+    // --strict). Anti-Stack is a tolerance check instead: three long words
+    // at one shared kegl legitimately solve to three wide rows - that alone
+    // does not stop the result from being Grid (ragged right edge,
+    // module-aligned fills), so it must not hard-fail a valid phrase.
+    gridExactViolations = [
+      ...singleScale.violations,
+      ...moduleAlignment.violations,
+      ...noOverlap.violations,
+      ...(inkBand.ok ? [] : [`ink-band clearance ${inkBand.minClearancePx.toFixed(2)}px below padding`]),
+    ];
+    toleranceChecks = [antiStack.ok, corridor.ok, bleed.ok];
   } else {
     const { left, right } = checkEdgeConvergence(rows, edgePercent);
     extraFields = [
@@ -143,6 +193,10 @@ for (const labCase of selectedCases) {
     toleranceChecks = [left.ok, right.ok, bleed.ok];
   }
   toleranceChecks.push(vertical.metric.ok);
+
+  const exactViolations = [...baseExactViolations, ...gridExactViolations];
+  const exactOk = exactViolations.length === 0;
+  if (!exactOk) exactFailures++;
 
   const toleranceFails = toleranceChecks.filter((ok) => !ok).length;
   toleranceViolations += toleranceFails;
@@ -171,7 +225,7 @@ for (const labCase of selectedCases) {
     `paths=${pathCount}`,
     `rows=${rows.length}`,
     ...extraFields,
-    fmtVertical(vertical, isBreak ? null : MARGIN_RATIO),
+    fmtVertical(vertical, isBreak || isGrid ? null : MARGIN_RATIO),
   ].join(' ');
   console.log(line);
 }
@@ -234,6 +288,26 @@ if (!filter) {
   }));
   const breakAccentResults = results.filter((r) => r.id.startsWith('break-') && r.id.includes('accent'));
 
+  const gridGeometryResults = results.filter((r) => r.id.startsWith('grid-') && !r.id.includes('accent'));
+  const gridPhraseOrder: string[] = [];
+  const gridByPhrase = new Map<string, CaseResult[]>();
+  for (const r of gridGeometryResults) {
+    if (!gridByPhrase.has(r.phrase)) {
+      gridByPhrase.set(r.phrase, []);
+      gridPhraseOrder.push(r.phrase);
+    }
+    gridByPhrase.get(r.phrase)!.push(r);
+  }
+  const gridPhraseGroups: SheetGroup[] = gridPhraseOrder.map((phrase) => ({
+    title: `Grid — ${phrase}`,
+    cards: gridByPhrase
+      .get(phrase)!
+      .slice()
+      .sort((a, b) => DENSITIES.indexOf(a.density) - DENSITIES.indexOf(b.density))
+      .map(toCard),
+  }));
+  const gridAccentResults = results.filter((r) => r.id.startsWith('grid-') && r.id.includes('accent'));
+
   const groups: SheetGroup[] = [
     ...phraseGroups,
     { title: 'Dust', cards: grainResults.map(toCard) },
@@ -242,6 +316,8 @@ if (!filter) {
     { title: 'Fixtures', cards: results.filter((r) => r.id.startsWith('fixture-')).map(toCard) },
     ...breakPhraseGroups,
     { title: 'Break — accent', cards: breakAccentResults.map(toCard) },
+    ...gridPhraseGroups,
+    { title: 'Grid — accent', cards: gridAccentResults.map(toCard) },
   ];
 
   const BEFORE_AFTER_IDS: readonly string[] = [
