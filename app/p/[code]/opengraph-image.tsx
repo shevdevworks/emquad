@@ -1,6 +1,6 @@
 import { ImageResponse } from 'next/og';
 import { render } from '@/lib/poster/render';
-import { getPosterByCode } from '@/lib/db/queries';
+import { getPosterByCode, posterSpecFromRow } from '@/lib/db/queries';
 
 export const alt = 'Emquad poster';
 export const size = { width: 1200, height: 630 };
@@ -17,7 +17,7 @@ export default async function Image({
     return new Response('Not Found', { status: 404 });
   }
 
-  const svg = render({ phrase: row.phrase, params: row.params });
+  const svg = render(posterSpecFromRow(row));
   const svgDataUrl = `data:image/svg+xml;base64,${Buffer.from(svg, 'utf-8').toString('base64')}`;
 
   return new ImageResponse(

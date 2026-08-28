@@ -12,6 +12,10 @@ export async function getPosterByCode(code: string): Promise<PosterRow | null> {
   return rows[0] ?? null;
 }
 
+export function posterSpecFromRow(row: PosterRow): PosterSpec {
+  return { phrase: row.phrase, params: row.params };
+}
+
 export async function insertPoster(spec: PosterSpec): Promise<PosterRow> {
   const db = getDb();
   for (let attempt = 0; attempt < MAX_INSERT_ATTEMPTS; attempt++) {

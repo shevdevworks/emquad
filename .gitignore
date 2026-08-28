@@ -52,3 +52,6 @@ lab/out/index.html
 
 # poster composition lab: previous-run snapshot for before/after diffing
 lab/prev/
+
+# stage 5: OG-image byte snapshots for before/after parity checks
+lab/shots/
