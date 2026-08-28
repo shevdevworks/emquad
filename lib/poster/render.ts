@@ -4,6 +4,7 @@ import { renderStack } from './modes/stack';
 import { renderBreak } from './modes/break';
 import { renderGrid } from './modes/grid';
 import { renderColumn } from './modes/column';
+import { renderRing } from './modes/ring';
 
 const PALETTE = {
   paper: '#000000',
@@ -16,7 +17,8 @@ export function render(spec: PosterSpec): string {
     spec.params.mode !== 'stack' &&
     spec.params.mode !== 'break' &&
     spec.params.mode !== 'grid' &&
-    spec.params.mode !== 'column'
+    spec.params.mode !== 'column' &&
+    spec.params.mode !== 'ring'
   ) {
     throw new Error(
       `render(): mode "${spec.params.mode}" is not implemented (available: ${AVAILABLE_MODES.join(', ')})`,
@@ -43,7 +45,9 @@ export function render(spec: PosterSpec): string {
         ? renderBreak(modeInput)
         : spec.params.mode === 'grid'
           ? renderGrid(modeInput)
-          : renderColumn(modeInput);
+          : spec.params.mode === 'column'
+            ? renderColumn(modeInput)
+            : renderRing(modeInput);
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${POSTER_WIDTH} ${POSTER_HEIGHT}">${background}${content}</svg>`;
 }

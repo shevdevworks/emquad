@@ -1,5 +1,7 @@
-import { POSTER_HEIGHT, POSTER_WIDTH } from '../lib/poster/types';
+import { POSTER_HEIGHT, POSTER_WIDTH, type Mode } from '../lib/poster/types';
 import { getPathInkBounds } from '../lib/poster/glyph-bounds';
+import { BOTTOM_FS_MULT, OUTER as RING_OUTER, SIDE_GAP_MIN_DEG as RING_SIDE_GAP_MIN_DEG } from '../lib/poster/modes/ring';
+import onestGlyphs from '../lib/poster/onest-glyphs.json';
 
 export interface ExactCheckResult {
   readonly ok: boolean;
@@ -9,10 +11,14 @@ export interface ExactCheckResult {
 const BANNED_SUBSTRINGS = ['<text', 'font', 'filter', 'blur', 'mask', 'foreignObject', 'Gradient', 'rotate('];
 const EXPECTED_SVG_OPEN_TAG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1350">';
 
-export function checkStructure(svg: string): ExactCheckResult {
+// 'rotate(' is banned for every mode except ring, which is required to use
+// a rotate() term in its glyph transform (see modes/ring.ts). The list
+// itself stays intact - only the per-call filtering is mode-dependent.
+export function checkStructure(svg: string, mode: Mode): ExactCheckResult {
   const violations: string[] = [];
+  const banned = mode === 'ring' ? BANNED_SUBSTRINGS.filter((s) => s !== 'rotate(') : BANNED_SUBSTRINGS;
 
-  for (const needle of BANNED_SUBSTRINGS) {
+  for (const needle of banned) {
     if (svg.includes(needle)) {
       violations.push(`banned substring found: "${needle}"`);
     }
@@ -656,6 +662,461 @@ export function checkColumnAccentInk(accentRow: RowSpan, measurePx: number, marg
   const rightLimit = POSTER_WIDTH - marginSideMin;
   if (accentRow.maxX > rightLimit + 0.05) {
     violations.push(`accent right edge ${accentRow.maxX.toFixed(2)}px exceeds ${rightLimit.toFixed(2)}px`);
+  }
+  return { ok: violations.length === 0, violations };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Ring                                                                       */
+/* -------------------------------------------------------------------------- */
+
+const RING_CX = POSTER_WIDTH / 2;
+const RING_CY = POSTER_HEIGHT / 2;
+
+// Only capHeight is needed here; a narrower cast than modes/*.ts's full
+// FontMetrics widening since this file never touches glyph paths/advances
+// directly - checks derive everything else from the emitted SVG itself.
+const RING_CAP_HEIGHT = (onestGlyphs as unknown as { readonly '800': { readonly capHeight: number } })['800']
+  .capHeight;
+
+export interface RingGlyphSpan {
+  readonly group: 'bottom' | 'top';
+  readonly px: number;
+  readonly py: number;
+  readonly deg: number;
+  /** fontSize / 1000, read directly from the glyph's own scale(). */
+  readonly scale: number;
+  /** Glyph advance in font units, derived from the transform's trailing translate(-adv/2 0). */
+  readonly adv: number;
+  readonly d: string;
+}
+
+// Ring's exact glyph-transform shape: translate(px,py) rotate(deg) scale(s)
+// translate(-adv/2,0), space-separated, nothing else. Deliberately separate
+// from the codebase-wide PATH_RE (stack/break/grid/column's translate+scale
+// shape) - see checkParserSync's mode-aware skip in render-all.ts.
+const RING_GLYPH_RE =
+  /<path d="([^"]*)" transform="translate\((-?[\d.]+) (-?[\d.]+)\) rotate\((-?[\d.]+)\) scale\(([\d.]+)\) translate\((-?[\d.]+) 0\)"\/>/g;
+
+// Matches modes/ring.ts's buildDiscPath exactly: two same-radius A-commands
+// forming a full circle, starting/ending at the disc's left point.
+const RING_DISC_RE =
+  /<path d="M(-?[\d.]+),(-?[\d.]+) A([\d.]+),\3 0 1 1 (-?[\d.]+),\2 A\3,\3 0 1 1 \1,\2 Z" fill="([^"]*)"\/>/;
+
+const RING_GROUP_RE = /<g fill="[^"]*">([\s\S]*?)<\/g>/g;
+
+/**
+ * ring.ts always emits exactly two glyph groups in a fixed order - the
+ * bottom arc first, the top arc second (see modes/ring.ts's output order) -
+ * so tagging by group index is purely positional, like grid.ts's rects.
+ */
+export function parseRingGlyphs(svg: string): RingGlyphSpan[] {
+  const groups = Array.from(svg.matchAll(RING_GROUP_RE));
+  const spans: RingGlyphSpan[] = [];
+
+  groups.forEach((groupMatch, index) => {
+    const group: RingGlyphSpan['group'] = index === 0 ? 'bottom' : 'top';
+    for (const match of groupMatch[1].matchAll(RING_GLYPH_RE)) {
+      const [, d, pxStr, pyStr, degStr, scaleStr, halfAdvStr] = match;
+      spans.push({
+        group,
+        d,
+        px: Number(pxStr),
+        py: Number(pyStr),
+        deg: Number(degStr),
+        scale: Number(scaleStr),
+        adv: -2 * Number(halfAdvStr),
+      });
+    }
+  });
+
+  return spans;
+}
+
+export function parseRingDiscRadius(svg: string): number | null {
+  const match = RING_DISC_RE.exec(svg);
+  return match === null ? null : Number(match[3]);
+}
+
+/**
+ * t is measured from 12 o'clock, clockwise: px=cx+R sin(t), py=cy-R cos(t),
+ * so t = atan2(px-cx, cy-py), range (-180,180]. This is the raw form; ring's
+ * bottom arc can straddle the +-180 seam (its span is centered on t=PI), so
+ * ordering/gap comparisons involving the bottom arc use the shifted variant
+ * below instead.
+ */
+function reconstructAngleDeg(px: number, py: number): number {
+  return (Math.atan2(px - RING_CX, RING_CY - py) * 180) / Math.PI;
+}
+
+function shiftNegativeDeg(deg: number): number {
+  return deg < 0 ? deg + 360 : deg;
+}
+
+/** Continuous across the bottom arc's span - only for ordering/gap math within/against the bottom group, not for check 7's literal deg comparison (which needs the raw, unshifted value). */
+function reconstructBottomAngleDeg(px: number, py: number): number {
+  return shiftNegativeDeg(reconstructAngleDeg(px, py));
+}
+
+function angularDiffDeg(a: number, b: number): number {
+  return Math.abs((((a - b + 180) % 360) + 360) % 360 - 180);
+}
+
+/** A glyph's angular half-width at the given radius, in degrees. */
+function angularHalfWidthDeg(span: RingGlyphSpan, radius: number): number {
+  const fontSize = span.scale * 1000;
+  const halfWidthRad = (span.adv * fontSize) / 1000 / (2 * radius);
+  return (halfWidthRad * 180) / Math.PI;
+}
+
+function transformInkCorner(
+  lx: number,
+  ly: number,
+  px: number,
+  py: number,
+  deg: number,
+  scale: number,
+  adv: number,
+): { x: number; y: number } {
+  const x0 = lx - adv / 2;
+  const y0 = ly;
+  const x1 = x0 * scale;
+  const y1 = y0 * scale;
+  const rad = (deg * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return { x: x1 * cos - y1 * sin + px, y: x1 * sin + y1 * cos + py };
+}
+
+function transformedInkCorners(s: RingGlyphSpan): { x: number; y: number }[] {
+  const bounds = getPathInkBounds(s.d);
+  const corners: [number, number][] = [
+    [bounds.x0, bounds.y0],
+    [bounds.x1, bounds.y0],
+    [bounds.x0, bounds.y1],
+    [bounds.x1, bounds.y1],
+  ];
+  return corners.map(([lx, ly]) => transformInkCorner(lx, ly, s.px, s.py, s.deg, s.scale, s.adv));
+}
+
+// Grain dust paths (renderGrain, primitives.ts) carry no transform attribute
+// at all - `<path d="..." fill="..." fill-opacity="...">` - so they are
+// structurally distinguishable from both glyph and disc paths and must be
+// excluded from the "every path is accounted for" count below.
+const RING_GRAIN_PATH_RE = /<path d="[^"]*" fill="[^"]*" fill-opacity="[^"]*"\/>/g;
+
+/** Check 1: every non-grain <path> in the ring SVG matches the exact glyph transform or the disc form. */
+export function checkRingGlyphTransform(svg: string): ExactCheckResult {
+  const totalPaths = Array.from(svg.matchAll(/<path /g)).length;
+  const grainPaths = Array.from(svg.matchAll(RING_GRAIN_PATH_RE)).length;
+  const glyphMatches = Array.from(svg.matchAll(RING_GLYPH_RE)).length;
+  const discMatches = RING_DISC_RE.test(svg) ? 1 : 0;
+  const nonGrainTotal = totalPaths - grainPaths;
+  const violations =
+    nonGrainTotal === glyphMatches + discMatches
+      ? []
+      : [
+          `ring <path> shape mismatch: ${nonGrainTotal} non-grain <path> elements, but only ${glyphMatches} matched the glyph transform and ${discMatches} matched the disc form`,
+        ];
+  return { ok: violations.length === 0, violations };
+}
+
+/**
+ * Check 2: non-tautological by construction. fsTop/fsBot come from each
+ * glyph's own scale() (an independent read of the emitted string); rTop is
+ * then computed analytically from fsTop and capHeight, and compared against
+ * the glyph's *measured* distance from center. Bottom glyphs are compared
+ * directly against OUTER (486) - there is no separate rInner placement
+ * radius, rInner only drives the angular step (see modes/ring.ts).
+ */
+export function checkRingRadii(spans: readonly RingGlyphSpan[], tolPx = 0.05): ExactCheckResult {
+  const violations: string[] = [];
+  const c = RING_CAP_HEIGHT / 1000;
+
+  for (const s of spans) {
+    const measured = Math.hypot(s.px - RING_CX, s.py - RING_CY);
+    if (s.group === 'top') {
+      const fsTop = s.scale * 1000;
+      const expected = RING_OUTER - c * fsTop;
+      if (Math.abs(measured - expected) > tolPx) {
+        violations.push(`top glyph radius ${measured.toFixed(3)}px != expected rTop ${expected.toFixed(3)}px`);
+      }
+    } else if (Math.abs(measured - RING_OUTER) > tolPx) {
+      violations.push(`bottom glyph radius ${measured.toFixed(3)}px != OUTER ${RING_OUTER.toFixed(3)}px`);
+    }
+  }
+
+  return { ok: violations.length === 0, violations };
+}
+
+/** Check 3: exactly two glyph groups; the bottom group's glyph count matches the case's expected letter count. */
+export function checkRingGroupShape(
+  svg: string,
+  spans: readonly RingGlyphSpan[],
+  expectedBottomLetterCount: number,
+): ExactCheckResult {
+  const violations: string[] = [];
+  const groupCount = Array.from(svg.matchAll(RING_GROUP_RE)).length;
+  if (groupCount !== 2) {
+    violations.push(`expected exactly 2 <g> glyph groups, found ${groupCount}`);
+  }
+  const bottomCount = spans.filter((s) => s.group === 'bottom').length;
+  if (bottomCount !== expectedBottomLetterCount) {
+    violations.push(`bottom group has ${bottomCount} glyphs, expected ${expectedBottomLetterCount}`);
+  }
+  return { ok: violations.length === 0, violations };
+}
+
+/** Check 4: angles strictly increasing along the top arc, strictly decreasing along the bottom arc. */
+export function checkRingMonotonic(spans: readonly RingGlyphSpan[]): ExactCheckResult {
+  const violations: string[] = [];
+  const top = spans.filter((s) => s.group === 'top');
+  const bottom = spans.filter((s) => s.group === 'bottom');
+
+  for (let i = 1; i < top.length; i++) {
+    const prev = reconstructAngleDeg(top[i - 1].px, top[i - 1].py);
+    const curr = reconstructAngleDeg(top[i].px, top[i].py);
+    if (!(curr > prev)) {
+      violations.push(`top arc angle not strictly increasing at index ${i}: ${prev.toFixed(3)} -> ${curr.toFixed(3)}`);
+    }
+  }
+
+  for (let i = 1; i < bottom.length; i++) {
+    const prev = reconstructBottomAngleDeg(bottom[i - 1].px, bottom[i - 1].py);
+    const curr = reconstructBottomAngleDeg(bottom[i].px, bottom[i].py);
+    if (!(curr < prev)) {
+      violations.push(`bottom arc angle not strictly decreasing at index ${i}: ${prev.toFixed(3)} -> ${curr.toFixed(3)}`);
+    }
+  }
+
+  return { ok: violations.length === 0, violations };
+}
+
+/**
+ * Check 5: nominal, not ink-based - deliberately separate from check 8.
+ * A rotated round letter's actual ink-bbox corner overshoots 486 (cap-height
+ * overshoot plus a tangential lever-arm from the half-advance rotation
+ * pivot), so an ink-based "== 486" check is red by construction. This check
+ * verifies the placement *math* instead: measured radius plus the nominal
+ * ink-band width for the top arc, and the measured radius alone for the
+ * bottom arc (whose baseline radius *is* its nominal outer edge).
+ */
+export function checkRingNominalOuterEdge(spans: readonly RingGlyphSpan[], tolPx = 0.05): ExactCheckResult {
+  const violations: string[] = [];
+  const c = RING_CAP_HEIGHT / 1000;
+
+  for (const s of spans) {
+    const measured = Math.hypot(s.px - RING_CX, s.py - RING_CY);
+    if (s.group === 'top') {
+      const fsTop = s.scale * 1000;
+      const nominalOuter = measured + c * fsTop;
+      if (Math.abs(nominalOuter - RING_OUTER) > tolPx) {
+        violations.push(`top glyph nominal outer edge ${nominalOuter.toFixed(3)}px != OUTER ${RING_OUTER.toFixed(3)}px`);
+      }
+    } else if (Math.abs(measured - RING_OUTER) > tolPx) {
+      violations.push(`bottom glyph nominal outer edge ${measured.toFixed(3)}px != OUTER ${RING_OUTER.toFixed(3)}px`);
+    }
+  }
+
+  return { ok: violations.length === 0, violations };
+}
+
+/**
+ * Check 6: both side gaps >= minGapDeg, measured between the outermost
+ * top-arc and bottom-arc letters on each side, minus both letters' angular
+ * half-widths. rTop/rInner must be the same radii the placement formulas
+ * themselves used (see modes/ring.ts) - the half-width of an edge letter is
+ * otherwise not well-defined.
+ */
+export function checkRingSideGaps(
+  spans: readonly RingGlyphSpan[],
+  rTop: number,
+  rInner: number,
+  minGapDeg = RING_SIDE_GAP_MIN_DEG,
+): ExactCheckResult {
+  const violations: string[] = [];
+  const top = spans.filter((s) => s.group === 'top');
+  const bottom = spans.filter((s) => s.group === 'bottom');
+  if (top.length === 0 || bottom.length === 0) return { ok: true, violations };
+
+  const topLeft = top[0];
+  const topRight = top[top.length - 1];
+  const bottomLeft = bottom[0];
+  const bottomRight = bottom[bottom.length - 1];
+
+  const topLeftDeg = shiftNegativeDeg(reconstructAngleDeg(topLeft.px, topLeft.py));
+  const topRightDeg = shiftNegativeDeg(reconstructAngleDeg(topRight.px, topRight.py));
+  const bottomLeftDeg = shiftNegativeDeg(reconstructAngleDeg(bottomLeft.px, bottomLeft.py));
+  const bottomRightDeg = shiftNegativeDeg(reconstructAngleDeg(bottomRight.px, bottomRight.py));
+
+  const gapRight =
+    bottomRightDeg - topRightDeg - angularHalfWidthDeg(topRight, rTop) - angularHalfWidthDeg(bottomRight, rInner);
+  const gapLeft =
+    topLeftDeg - bottomLeftDeg - angularHalfWidthDeg(topLeft, rTop) - angularHalfWidthDeg(bottomLeft, rInner);
+
+  if (gapRight < minGapDeg) violations.push(`right side gap ${gapRight.toFixed(3)}deg < ${minGapDeg}deg`);
+  if (gapLeft < minGapDeg) violations.push(`left side gap ${gapLeft.toFixed(3)}deg < ${minGapDeg}deg`);
+
+  return { ok: violations.length === 0, violations };
+}
+
+/**
+ * Check 7: the load-bearing check. Literal deg in the transform vs. the
+ * angle reconstructed independently from (px,py) - the only check that can
+ * catch a rotation-direction/offset bug, since every other check reconstructs
+ * its own angle from (px,py) and never looks at deg at all.
+ */
+export function checkRingDegMatchesAngle(spans: readonly RingGlyphSpan[], tolDeg = 0.01): ExactCheckResult {
+  const violations: string[] = [];
+
+  for (const s of spans) {
+    const raw = reconstructAngleDeg(s.px, s.py);
+    const expectedDeg = s.group === 'top' ? raw : raw + 180;
+    const diff = angularDiffDeg(s.deg, expectedDeg);
+    if (diff > tolDeg) {
+      violations.push(
+        `${s.group} glyph deg=${s.deg.toFixed(3)} does not match angle reconstructed from (px,py)=${expectedDeg.toFixed(3)} (diff=${diff.toFixed(3)}deg)`,
+      );
+    }
+  }
+
+  return { ok: violations.length === 0, violations };
+}
+
+/**
+ * Check 8: actual ink, containment only. No equality to 486, no radius
+ * check of any kind - that is entirely check 5's job, on nominal (non-ink)
+ * numbers. Round-letter overshoot and the rotation lever-arm are expected
+ * to push ink slightly past OUTER; the only requirement here is staying
+ * inside the canvas.
+ */
+export function checkRingInkWithinCanvas(spans: readonly RingGlyphSpan[]): ExactCheckResult {
+  const violations: string[] = [];
+  for (const s of spans) {
+    for (const corner of transformedInkCorners(s)) {
+      if (corner.x < 0 || corner.x > POSTER_WIDTH || corner.y < 0 || corner.y > POSTER_HEIGHT) {
+        violations.push(
+          `${s.group} glyph ink corner (${corner.x.toFixed(2)}, ${corner.y.toFixed(2)}) outside canvas [0,${POSTER_WIDTH}]x[0,${POSTER_HEIGHT}]`,
+        );
+      }
+    }
+  }
+  return { ok: violations.length === 0, violations };
+}
+
+/** Check 10 helper: thetaTop reconstructed purely from the rendered top group, in degrees. */
+export function measureRingThetaTop(spans: readonly RingGlyphSpan[], rTop: number): number {
+  const top = spans.filter((s) => s.group === 'top');
+  if (top.length === 0) return 0;
+  const first = top[0];
+  const last = top[top.length - 1];
+  const minAngle = reconstructAngleDeg(first.px, first.py);
+  const maxAngle = reconstructAngleDeg(last.px, last.py);
+  return maxAngle - minAngle + angularHalfWidthDeg(first, rTop) + angularHalfWidthDeg(last, rTop);
+}
+
+/** Check 11 (tolerance): fsBot/fsTop >= minRatio. */
+export function checkRingBottomTopFsRatio(
+  spans: readonly RingGlyphSpan[],
+  minRatio = 1.25,
+): { ratio: number; ok: boolean } {
+  const top = spans.find((s) => s.group === 'top');
+  const bottom = spans.find((s) => s.group === 'bottom');
+  const fsTop = (top?.scale ?? 0) * 1000;
+  const fsBot = (bottom?.scale ?? 0) * 1000;
+  const ratio = fsTop > 0 ? fsBot / fsTop : 0;
+  return { ratio, ok: ratio >= minRatio };
+}
+
+const RING_MIN_LETTER_GAP_DEG = 0.01;
+
+/**
+ * Per-pair angular gap between adjacent same-arc letters, at the given
+ * radius, in degrees - the raw angle difference (accounting for the arc's
+ * direction: top increases, bottom decreases and needs the wraparound-shifted
+ * reconstruction) minus both letters' angular half-widths. Positive by
+ * construction once TRACKING (modes/ring.ts) is nonzero: without it, adjacent
+ * letters sit mathematically edge-to-edge (zero natural gap).
+ */
+export function measureRingLetterGaps(spans: readonly RingGlyphSpan[], group: RingGlyphSpan['group'], radius: number): number[] {
+  const arc = spans.filter((s) => s.group === group);
+  const gaps: number[] = [];
+
+  for (let i = 1; i < arc.length; i++) {
+    const prevDeg = group === 'top' ? reconstructAngleDeg(arc[i - 1].px, arc[i - 1].py) : reconstructBottomAngleDeg(arc[i - 1].px, arc[i - 1].py);
+    const currDeg = group === 'top' ? reconstructAngleDeg(arc[i].px, arc[i].py) : reconstructBottomAngleDeg(arc[i].px, arc[i].py);
+    const rawGap = group === 'top' ? currDeg - prevDeg : prevDeg - currDeg;
+    gaps.push(rawGap - angularHalfWidthDeg(arc[i - 1], radius) - angularHalfWidthDeg(arc[i], radius));
+  }
+
+  return gaps;
+}
+
+/**
+ * Check 12: the regression guard for the rInner-vs-rBot defect (see
+ * modes/ring.ts's placeBottomArc), and its top-arc counterpart - the same
+ * arithmetic applies there too, omitting it there was an oversight. Adjacent
+ * same-arc letters' angular gap, minus both their angular half-widths, must
+ * be at least RING_MIN_LETTER_GAP_DEG (not a bare "> 0": with TRACKING now
+ * nonzero the expected gap is comfortably positive and far above
+ * floating-point noise, so a small positive floor is the meaningful
+ * assertion, not a zero one).
+ */
+export function checkRingLetterGap(
+  spans: readonly RingGlyphSpan[],
+  group: RingGlyphSpan['group'],
+  radius: number,
+  minGapDeg = RING_MIN_LETTER_GAP_DEG,
+): ExactCheckResult {
+  const violations: string[] = [];
+  const gaps = measureRingLetterGaps(spans, group, radius);
+
+  gaps.forEach((gap, i) => {
+    if (gap < minGapDeg) {
+      violations.push(`${group} letters ${i}/${i + 1} gap at r=${radius.toFixed(2)}px is ${gap.toFixed(4)}deg, expected >= ${minGapDeg}deg`);
+    }
+  });
+
+  return { ok: violations.length === 0, violations };
+}
+
+/** Check 13a (tolerance): gap between the disc and the ink. */
+export function checkRingDiscGap(discR: number, inner: number, minGapPx = 40): { gapPx: number; ok: boolean } {
+  const gapPx = inner - discR;
+  return { gapPx, ok: gapPx >= minGapPx };
+}
+
+/** Check 13b (tolerance): width of the ink band, as a fraction of OUTER. */
+export function checkRingInkBandWidth(
+  bandWidthPx: number,
+  minRatio = 0.12,
+  maxRatio = 0.3,
+): { ratio: number; ok: boolean } {
+  const ratio = bandWidthPx / RING_OUTER;
+  return { ratio, ok: ratio >= minRatio && ratio <= maxRatio };
+}
+
+// scale() is emitted via toFixed(6) (modes/ring.ts), so each of fsTop/fsBot
+// carries roughly 1e-6 of recoverable precision, and their ratio doubles
+// that to roughly 1e-5 - a tighter tolerance can't distinguish real drift
+// from the string round-trip itself. The equality requirement (BOTTOM_FS_MULT
+// exactly) is unchanged; only the tolerance moved.
+const RING_FS_EXACT_TOL = 1e-5;
+
+/** Check 14: exact pin on fsBot/fsTop == BOTTOM_FS_MULT, distinct from check 11's looser floor. */
+export function checkRingBottomFsExact(
+  spans: readonly RingGlyphSpan[],
+  expectedMult = BOTTOM_FS_MULT,
+  tol = RING_FS_EXACT_TOL,
+): ExactCheckResult {
+  const violations: string[] = [];
+  const top = spans.find((s) => s.group === 'top');
+  const bottom = spans.find((s) => s.group === 'bottom');
+  const fsTop = (top?.scale ?? 0) * 1000;
+  const fsBot = (bottom?.scale ?? 0) * 1000;
+  const ratio = fsTop > 0 ? fsBot / fsTop : 0;
+  if (Math.abs(ratio - expectedMult) > tol) {
+    violations.push(`fsBot/fsTop = ${ratio} != expected ${expectedMult} (tolerance ${tol})`);
   }
   return { ok: violations.length === 0, violations };
 }

@@ -258,6 +258,61 @@ const columnGrainCases: LabCase[] = [0, 3].map((grain) => ({
   }),
 }));
 
+// Ring-only phrases. PHRASE_RING_CENTER is the default 3-word phrase for
+// density/accent/seed/inversion coverage. PHRASE_RING_LAST_SEVEN exists
+// specifically for the "accent on last word" case: on a 3-word phrase that
+// case is indistinguishable from "no accent" (both default the bottom arc
+// to the same word), so it needs a phrase long enough that an explicit
+// accent:6 is a meaningfully different code path.
+const PHRASE_RING_CENTER = 'Hold the center';
+const PHRASE_RING_LAST_SEVEN = 'Hold your shape when nothing else does';
+const PHRASE_RING_SHORT = 'Go be free';
+
+const ringDensityCases: LabCase[] = (DENSITIES as readonly Density[]).map((density) => ({
+  id: `ring-density-${density}`,
+  spec: spec(PHRASE_RING_CENTER, { mode: 'ring', density, invert: false, accent: null, seed: 7 }),
+}));
+
+const ringAccentCases: LabCase[] = [
+  {
+    id: 'ring-accent-first',
+    spec: spec(PHRASE_RING_CENTER, { mode: 'ring', density: 'regular', accent: 0, seed: 7 }),
+  },
+  {
+    id: 'ring-accent-middle',
+    spec: spec(PHRASE_RING_CENTER, { mode: 'ring', density: 'regular', accent: 1, seed: 7 }),
+  },
+  {
+    id: 'ring-accent-last-seven',
+    spec: spec(PHRASE_RING_LAST_SEVEN, { mode: 'ring', density: 'regular', accent: 6, seed: 15 }),
+  },
+];
+
+const ringSevenWordsCase: LabCase = {
+  id: 'ring-seven-words-no-accent',
+  spec: spec(PHRASE_MAKE_MORE, { mode: 'ring', density: 'regular', accent: null, seed: 42 }),
+};
+
+const ringThreeShortWordsCase: LabCase = {
+  id: 'ring-three-short-words',
+  spec: spec(PHRASE_RING_SHORT, { mode: 'ring', density: 'regular', accent: null, seed: 9 }),
+};
+
+const ringCyrillicCase: LabCase = {
+  id: 'ring-cyrillic',
+  spec: spec(PHRASE_TISHA, { mode: 'ring', density: 'regular', accent: null, seed: 3 }),
+};
+
+const ringSeedCases: LabCase[] = [100, 500].map((seed) => ({
+  id: `ring-seed-${seed}`,
+  spec: spec(PHRASE_RING_CENTER, { mode: 'ring', density: 'regular', accent: null, seed }),
+}));
+
+const ringInversionCase: LabCase = {
+  id: 'ring-invert',
+  spec: spec(PHRASE_RING_CENTER, { mode: 'ring', density: 'regular', invert: true, accent: null, seed: 7 }),
+};
+
 export const CASES: readonly LabCase[] = [
   ...fixtureCases,
   ...geometryCases,
@@ -279,4 +334,11 @@ export const CASES: readonly LabCase[] = [
   columnCyrillicCase,
   columnInversionCase,
   ...columnGrainCases,
+  ...ringDensityCases,
+  ...ringAccentCases,
+  ringSevenWordsCase,
+  ringThreeShortWordsCase,
+  ringCyrillicCase,
+  ...ringSeedCases,
+  ringInversionCase,
 ];

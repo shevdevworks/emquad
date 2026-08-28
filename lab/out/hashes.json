@@ -66,5 +66,17 @@
   "grid-tisha-trymaye-formu": "b404e6fa0bdecebcb7bc057336d8166b5cd941ce8be224b2ecd8979b584838e1",
   "grid-tisha-yde-sama-soboyu-airy": "efd440e499a4baaaf795b479cae81d63a11f59528abed5c779339f2b8ed99d0b",
   "grid-tisha-yde-sama-soboyu-regular": "43a8379f3bb26abd6062b3a470fdb1b1b450f48be839e9345a40d3a93910896f",
-  "grid-tisha-yde-sama-soboyu-tight": "4886db71dc341ba9e44683c04575c5b3af78558116d317fd3df15ac25ceffdec"
+  "grid-tisha-yde-sama-soboyu-tight": "4886db71dc341ba9e44683c04575c5b3af78558116d317fd3df15ac25ceffdec",
+  "ring-accent-first": "cf9fa4692999c50c8f5a60403be46ddb664310890f003093e70d533aa49465ed",
+  "ring-accent-last-seven": "e8240b8276c4d67f50d3b1edc3013119a9268d1edece7f893a6e2bd449f531b6",
+  "ring-accent-middle": "ec7812b9d5f7f61080d22b9c154e8a65da188dde5988007c80d0de6cfa680050",
+  "ring-cyrillic": "41f1469556cfa70f495cc3e7a62355b11e467a5cbb196a1e032158ae16da1c78",
+  "ring-density-airy": "fe4ebe5eee68cf67a877cdc7c7719440ee9553862afb96ffdb08d613847d0a21",
+  "ring-density-regular": "edd4059748c247733b014e1ae3e740e42d2828c3a697ed3c5ca33546fee9925f",
+  "ring-density-tight": "a37875b276c9742fde630daeed9a7b2f5e40e90bd89e08e64b0e7e9cb42fc1d8",
+  "ring-invert": "1f9bb3a025fe7f6a5496ec66375dec494ce16b171be5b34a51205a5e45b32d77",
+  "ring-seed-100": "a9fbb9f60e3052dc452cfd20ae0c277f38f5f12c326b9a6abdf2ea532359adf6",
+  "ring-seed-500": "39a06c5f1a7da14e76abfd23df9e8dd443ec603958219760c77c1fde44c3f278",
+  "ring-seven-words-no-accent": "6ede1d3cd696a0a1fc80765475d2a9ed35d096612a6281d7b5a022950007ca20",
+  "ring-three-short-words": "ebcb1cceac8ab26a3f0a0e469fe132c1b78a8444fa39e01ab3fccaf2f8033648"
 }

@@ -8,6 +8,8 @@ import { splitWords } from '../lib/poster/validate';
 import { MARGIN_RATIO } from '../lib/poster/modes/stack';
 import { GIANT_MIN_INK_WIDTH_PX, MIN_GIANT_BLOCK_GAP_PX } from '../lib/poster/modes/break';
 import { CELL, DENSITY_METRICS as GRID_DENSITY_METRICS, PADDING as GRID_PADDING } from '../lib/poster/modes/grid';
+import { FS_TO_OUTER as RING_FS_TO_OUTER, OUTER as RING_OUTER } from '../lib/poster/modes/ring';
+import onestGlyphs from '../lib/poster/onest-glyphs.json';
 import { CASES } from './cases';
 import {
   checkBleed,
@@ -27,6 +29,19 @@ import {
   checkGridNoOverlap,
   checkGridSingleScale,
   checkParserSync,
+  checkRingBottomFsExact,
+  checkRingBottomTopFsRatio,
+  checkRingDegMatchesAngle,
+  checkRingDiscGap,
+  checkRingGlyphTransform,
+  checkRingGroupShape,
+  checkRingInkBandWidth,
+  checkRingInkWithinCanvas,
+  checkRingLetterGap,
+  checkRingMonotonic,
+  checkRingNominalOuterEdge,
+  checkRingRadii,
+  checkRingSideGaps,
   checkSingleSidedHorizontalBleed,
   checkStructure,
   checkVerticalMargins,
@@ -34,7 +49,11 @@ import {
   collectRows,
   computeColumnMeasure,
   countGlyphPaths,
+  measureRingLetterGaps,
+  measureRingThetaTop,
   parseGridRects,
+  parseRingDiscRadius,
+  parseRingGlyphs,
   splitColumnAccentRow,
   splitGiantRow,
   splitGridRects,
@@ -42,6 +61,11 @@ import {
   type VerticalMarginsResult,
 } from './checks';
 import { renderSheet, type SheetBeforeAfterRow, type SheetCard, type SheetGroup } from './sheet';
+
+// Only capHeight is needed here; a narrower cast than modes/*.ts's full
+// FontMetrics widening - see checks.ts's identical RING_CAP_HEIGHT.
+const RING_CAP_HEIGHT = (onestGlyphs as unknown as { readonly '800': { readonly capHeight: number } })['800']
+  .capHeight;
 
 const DEFAULT_EDGE_CONVERGENCE_PERCENT = 0.5;
 // Percent deviation of the bottom/top margin ratio tolerated from its
@@ -57,6 +81,7 @@ const COLUMN_MARGIN_TOP_EPS_PX = 0.05;
 const COLUMN_MEASURE_MAX_RATIO = 0.66;
 const COLUMN_BLOCK_HEIGHT_MAX_RATIO = 0.8;
 const COLUMN_TIGHT_AIRY_KEGL_MIN_RATIO = 1.7;
+const RING_THETA_TOP_TIGHT_AIRY_MIN_RATIO = 1.8;
 
 // Mirrors column.ts's private COLUMN_WIDTH_RATIO, duplicated here only so the
 // lab can report the design measure next to the actual one - column.ts
@@ -125,6 +150,7 @@ const results: CaseResult[] = [];
 const hashes: Record<string, string> = {};
 const columnBaseScales = new Map<string, number>();
 const columnShrinkCases: { id: string; measureActualPx: number; measureDesignPx: number }[] = [];
+const ringThetaTops = new Map<string, number>();
 let exactFailures = 0;
 let toleranceViolations = 0;
 
@@ -132,13 +158,19 @@ for (const labCase of selectedCases) {
   const isBreak = labCase.spec.params.mode === 'break';
   const isGrid = labCase.spec.params.mode === 'grid';
   const isColumn = labCase.spec.params.mode === 'column';
+  const isRing = labCase.spec.params.mode === 'ring';
   const svgA = render(labCase.spec);
   const svgB = render(labCase.spec);
 
-  const structure = checkStructure(svgA);
+  const structure = checkStructure(svgA, labCase.spec.params.mode);
   const determinism = checkDeterminism(svgA, svgB);
   const pathCount = countGlyphPaths(svgA);
-  const parserSync = checkParserSync(svgA, pathCount);
+  // Ring's glyph transform is a 4-part translate/rotate/scale/translate
+  // chain that the codebase-wide PATH_RE (translate+scale only) can never
+  // match, so pathCount legitimately reads 0 for ring - checkParserSync's
+  // "found <path> but 0 matched" guard is skipped for ring specifically;
+  // ring's own checkRingGlyphTransform (below) supersedes it.
+  const parserSync = isRing ? { ok: true, violations: [] as string[] } : checkParserSync(svgA, pathCount);
   const rows = collectRows(svgA);
 
   const edgePercent = labCase.thresholds?.edgeConvergencePercent ?? DEFAULT_EDGE_CONVERGENCE_PERCENT;
@@ -148,7 +180,14 @@ for (const labCase of selectedCases) {
   // edge), so - like Break - it has no margin-ratio invariant to check;
   // the measurement still runs, diagnostic-only. Column pins its top margin
   // to a fixed px offset instead of a ratio, so it's diagnostic-only here too.
-  const vertical = checkVerticalMargins(svgA, isBreak || isGrid || isColumn ? null : MARGIN_RATIO, verticalPercent);
+  // Ring is radial, not stacked, so it has no such invariant either - its
+  // glyphs don't match PATH_RE at all, so this would already no-op, but the
+  // gate is made explicit rather than left accidentally-correct.
+  const vertical = checkVerticalMargins(
+    svgA,
+    isBreak || isGrid || isColumn || isRing ? null : MARGIN_RATIO,
+    verticalPercent,
+  );
   const bleed = checkBleed(svgA, labCase.allowBleed ?? false);
 
   const baseExactViolations = [...structure.violations, ...determinism.violations, ...parserSync.violations];
@@ -157,6 +196,7 @@ for (const labCase of selectedCases) {
   let toleranceChecks: boolean[];
   let gridExactViolations: string[] = [];
   let columnExactViolations: string[] = [];
+  let ringExactViolations: string[] = [];
 
   if (isBreak) {
     const { blockRows } = splitGiantRow(rows);
@@ -264,6 +304,72 @@ for (const labCase of selectedCases) {
       `bleed=${bleed.ok ? 'ok' : 'FAIL'}(${bleed.violationCount}/${bleed.maxOverflowPx.toFixed(2)}px)`,
     ];
     toleranceChecks = [measureBoundOk, heightBoundOk, bleed.ok];
+  } else if (isRing) {
+    const phraseWords = splitWords(labCase.spec.phrase);
+    const bottomIndex = labCase.spec.params.accent ?? phraseWords.length - 1;
+    const expectedBottomLetterCount = Array.from(phraseWords[bottomIndex]).length;
+
+    const spans = parseRingGlyphs(svgA);
+    const topSpan = spans.find((s) => s.group === 'top');
+    const bottomSpan = spans.find((s) => s.group === 'bottom');
+    const fsTop = (topSpan?.scale ?? 0) * 1000;
+    const fsBot = (bottomSpan?.scale ?? 0) * 1000;
+    const c = RING_CAP_HEIGHT / 1000;
+    const rTop = RING_OUTER - c * fsTop;
+    const rInner = RING_OUTER - c * fsBot;
+    const inner = RING_OUTER - c * Math.max(fsTop, fsBot);
+    const bandWidthPx = c * fsTop;
+    const discR = parseRingDiscRadius(svgA) ?? 0;
+
+    const glyphTransform = checkRingGlyphTransform(svgA);
+    const radii = checkRingRadii(spans);
+    const groupShape = checkRingGroupShape(svgA, spans, expectedBottomLetterCount);
+    const monotonic = checkRingMonotonic(spans);
+    const nominalOuterEdge = checkRingNominalOuterEdge(spans);
+    const sideGaps = checkRingSideGaps(spans, rTop, rInner);
+    const degMatch = checkRingDegMatchesAngle(spans);
+    const inCanvas = checkRingInkWithinCanvas(spans);
+    const fsRatio = checkRingBottomTopFsRatio(spans);
+    const topGap = checkRingLetterGap(spans, 'top', rTop);
+    const bottomGap = checkRingLetterGap(spans, 'bottom', rInner);
+    const discGap = checkRingDiscGap(discR, inner);
+    const bandWidth = checkRingInkBandWidth(bandWidthPx);
+    const fsExact = checkRingBottomFsExact(spans);
+    const thetaTopDeg = measureRingThetaTop(spans, rTop);
+    ringThetaTops.set(labCase.id, thetaTopDeg);
+
+    const allGaps = [...measureRingLetterGaps(spans, 'top', rTop), ...measureRingLetterGaps(spans, 'bottom', rInner)];
+    const gapMinDeg = allGaps.length > 0 ? Math.min(...allGaps) : 0;
+    const gapMaxDeg = allGaps.length > 0 ? Math.max(...allGaps) : 0;
+    const fsTopNominal = RING_FS_TO_OUTER[labCase.spec.params.density] * RING_OUTER;
+    const shrunk = fsTopNominal - fsTop > 0.01;
+
+    ringExactViolations = [
+      ...glyphTransform.violations,
+      ...radii.violations,
+      ...groupShape.violations,
+      ...monotonic.violations,
+      ...nominalOuterEdge.violations,
+      ...sideGaps.violations,
+      ...degMatch.violations,
+      ...inCanvas.violations,
+      ...topGap.violations,
+      ...bottomGap.violations,
+      ...fsExact.violations,
+    ];
+
+    extraFields = [
+      `fsTop=${fsTop.toFixed(2)}`,
+      `fsBot=${fsBot.toFixed(2)}`,
+      `thetaTop=${thetaTopDeg.toFixed(2)}deg`,
+      `gap-min=${gapMinDeg.toFixed(4)}deg gap-max=${gapMaxDeg.toFixed(4)}deg`,
+      `shrink=${shrunk ? 'yes' : 'no'}`,
+      `fs-ratio=${fsRatio.ratio.toFixed(3)}${fsRatio.ok ? '' : '!'}`,
+      `disc-gap=${discGap.gapPx.toFixed(2)}px${discGap.ok ? '' : '!'}`,
+      `band-width=${bandWidth.ratio.toFixed(3)}${bandWidth.ok ? '' : '!'}`,
+      `bleed=${bleed.ok ? 'ok' : 'FAIL'}(${bleed.violationCount}/${bleed.maxOverflowPx.toFixed(2)}px)`,
+    ];
+    toleranceChecks = [fsRatio.ok, discGap.ok, bandWidth.ok, bleed.ok];
   } else {
     const { left, right } = checkEdgeConvergence(rows, edgePercent);
     extraFields = [
@@ -275,7 +381,7 @@ for (const labCase of selectedCases) {
   }
   toleranceChecks.push(vertical.metric.ok);
 
-  const exactViolations = [...baseExactViolations, ...gridExactViolations, ...columnExactViolations];
+  const exactViolations = [...baseExactViolations, ...gridExactViolations, ...columnExactViolations, ...ringExactViolations];
   const exactOk = exactViolations.length === 0;
   if (!exactOk) exactFailures++;
 
@@ -306,7 +412,7 @@ for (const labCase of selectedCases) {
     `paths=${pathCount}`,
     `rows=${rows.length}`,
     ...extraFields,
-    fmtVertical(vertical, isBreak || isGrid || isColumn ? null : MARGIN_RATIO),
+    fmtVertical(vertical, isBreak || isGrid || isColumn || isRing ? null : MARGIN_RATIO),
   ].join(' ');
   console.log(line);
 }
@@ -323,6 +429,20 @@ if (tightScale !== undefined && airyScale !== undefined) {
   if (!ok) toleranceViolations++;
   console.log(
     `[${ok ? 'PASS' : 'FAIL'}] column tight/airy kegl ratio=${ratio.toFixed(3)} (min ${COLUMN_TIGHT_AIRY_KEGL_MIN_RATIO})${ok ? '' : '!'}`,
+  );
+}
+
+// Density sets the top arc's font size directly, so a tighter density must
+// produce a visibly larger thetaTop than an airy one - checked across the
+// two density-triple cases rather than per-case, same as column's kegl ratio.
+const ringThetaTopTight = ringThetaTops.get('ring-density-tight');
+const ringThetaTopAiry = ringThetaTops.get('ring-density-airy');
+if (ringThetaTopTight !== undefined && ringThetaTopAiry !== undefined) {
+  const ratio = ringThetaTopTight / ringThetaTopAiry;
+  const ok = ratio >= RING_THETA_TOP_TIGHT_AIRY_MIN_RATIO;
+  if (!ok) toleranceViolations++;
+  console.log(
+    `[${ok ? 'PASS' : 'FAIL'}] ring tight/airy thetaTop ratio=${ratio.toFixed(3)} (min ${RING_THETA_TOP_TIGHT_AIRY_MIN_RATIO})${ok ? '' : '!'}`,
   );
 }
 
