@@ -3,6 +3,7 @@ import { splitWords } from './validate';
 import { renderStack } from './modes/stack';
 import { renderBreak } from './modes/break';
 import { renderGrid } from './modes/grid';
+import { renderColumn } from './modes/column';
 
 const PALETTE = {
   paper: '#000000',
@@ -11,7 +12,12 @@ const PALETTE = {
 } as const;
 
 export function render(spec: PosterSpec): string {
-  if (spec.params.mode !== 'stack' && spec.params.mode !== 'break' && spec.params.mode !== 'grid') {
+  if (
+    spec.params.mode !== 'stack' &&
+    spec.params.mode !== 'break' &&
+    spec.params.mode !== 'grid' &&
+    spec.params.mode !== 'column'
+  ) {
     throw new Error(
       `render(): mode "${spec.params.mode}" is not implemented (available: ${AVAILABLE_MODES.join(', ')})`,
     );
@@ -35,7 +41,9 @@ export function render(spec: PosterSpec): string {
       ? renderStack(modeInput)
       : spec.params.mode === 'break'
         ? renderBreak(modeInput)
-        : renderGrid(modeInput);
+        : spec.params.mode === 'grid'
+          ? renderGrid(modeInput)
+          : renderColumn(modeInput);
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${POSTER_WIDTH} ${POSTER_HEIGHT}">${background}${content}</svg>`;
 }

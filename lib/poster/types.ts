@@ -44,7 +44,7 @@ export type Mode = (typeof MODES)[number];
  * Modes that currently have an implementation. The editor builds its controls
  * from this list, so shipping a new mode is a one-line change here.
  */
-export const AVAILABLE_MODES = ['stack', 'break', 'grid'] as const satisfies readonly Mode[];
+export const AVAILABLE_MODES = ['stack', 'break', 'grid', 'column'] as const satisfies readonly Mode[];
 
 export type AvailableMode = (typeof AVAILABLE_MODES)[number];
 

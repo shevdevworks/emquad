@@ -4,6 +4,7 @@ import * as crypto from 'node:crypto';
 
 import { DENSITIES, POSTER_HEIGHT, POSTER_WIDTH, type Density, type PosterSpec } from '../lib/poster/types';
 import { render } from '../lib/poster/render';
+import { splitWords } from '../lib/poster/validate';
 import { MARGIN_RATIO } from '../lib/poster/modes/stack';
 import { GIANT_MIN_INK_WIDTH_PX, MIN_GIANT_BLOCK_GAP_PX } from '../lib/poster/modes/break';
 import { CELL, DENSITY_METRICS as GRID_DENSITY_METRICS, PADDING as GRID_PADDING } from '../lib/poster/modes/grid';
@@ -11,6 +12,10 @@ import { CASES } from './cases';
 import {
   checkBleed,
   checkBlockLineSpacing,
+  checkColumnAccentInk,
+  checkColumnLeftEdges,
+  checkColumnNoOverlap,
+  checkColumnScaleShape,
   checkDeterminism,
   checkEdgeConvergence,
   checkGiantBlockGap,
@@ -27,8 +32,10 @@ import {
   checkVerticalMargins,
   collectGlyphScales,
   collectRows,
+  computeColumnMeasure,
   countGlyphPaths,
   parseGridRects,
+  splitColumnAccentRow,
   splitGiantRow,
   splitGridRects,
   type ToleranceMetric,
@@ -42,6 +49,23 @@ const DEFAULT_EDGE_CONVERGENCE_PERCENT = 0.5;
 // actually produces, so it catches formula regressions without ever being
 // noisy on correct output. See checks.ts's checkVerticalMargins.
 const DEFAULT_VERTICAL_RATIO_PERCENT = 2;
+
+// Column pins its block top to a fixed pixel offset rather than a ratio, so
+// it gets its own exact check instead of checkVerticalMargins' ratio-based one.
+const COLUMN_MARGIN_TOP_PX = 81;
+const COLUMN_MARGIN_TOP_EPS_PX = 0.05;
+const COLUMN_MEASURE_MAX_RATIO = 0.66;
+const COLUMN_BLOCK_HEIGHT_MAX_RATIO = 0.8;
+const COLUMN_TIGHT_AIRY_KEGL_MIN_RATIO = 1.7;
+
+// Mirrors column.ts's private COLUMN_WIDTH_RATIO, duplicated here only so the
+// lab can report the design measure next to the actual one - column.ts
+// itself never exports it.
+const COLUMN_WIDTH_RATIO: Record<Density, number> = { tight: 0.62, regular: 0.46, airy: 0.32 };
+// How far below the design measure the actual measure has to fall before
+// it's read as "the height-cap shrink loop fired", rather than ordinary
+// toFixed(2) rounding noise (worth a fraction of a px, never this much).
+const COLUMN_SHRINK_DETECT_EPS_PX = 0.5;
 
 const args = process.argv.slice(2);
 const strict = args.includes('--strict');
@@ -99,12 +123,15 @@ interface CaseResult {
 
 const results: CaseResult[] = [];
 const hashes: Record<string, string> = {};
+const columnBaseScales = new Map<string, number>();
+const columnShrinkCases: { id: string; measureActualPx: number; measureDesignPx: number }[] = [];
 let exactFailures = 0;
 let toleranceViolations = 0;
 
 for (const labCase of selectedCases) {
   const isBreak = labCase.spec.params.mode === 'break';
   const isGrid = labCase.spec.params.mode === 'grid';
+  const isColumn = labCase.spec.params.mode === 'column';
   const svgA = render(labCase.spec);
   const svgB = render(labCase.spec);
 
@@ -119,8 +146,9 @@ for (const labCase of selectedCases) {
 
   // Grid has no page margins at all (the module grid runs to the canvas
   // edge), so - like Break - it has no margin-ratio invariant to check;
-  // the measurement still runs, diagnostic-only.
-  const vertical = checkVerticalMargins(svgA, isBreak || isGrid ? null : MARGIN_RATIO, verticalPercent);
+  // the measurement still runs, diagnostic-only. Column pins its top margin
+  // to a fixed px offset instead of a ratio, so it's diagnostic-only here too.
+  const vertical = checkVerticalMargins(svgA, isBreak || isGrid || isColumn ? null : MARGIN_RATIO, verticalPercent);
   const bleed = checkBleed(svgA, labCase.allowBleed ?? false);
 
   const baseExactViolations = [...structure.violations, ...determinism.violations, ...parserSync.violations];
@@ -128,6 +156,7 @@ for (const labCase of selectedCases) {
   let extraFields: string[];
   let toleranceChecks: boolean[];
   let gridExactViolations: string[] = [];
+  let columnExactViolations: string[] = [];
 
   if (isBreak) {
     const { blockRows } = splitGiantRow(rows);
@@ -183,6 +212,58 @@ for (const labCase of selectedCases) {
       ...(inkBand.ok ? [] : [`ink-band clearance ${inkBand.minClearancePx.toFixed(2)}px below padding`]),
     ];
     toleranceChecks = [antiStack.ok, corridor.ok, bleed.ok];
+  } else if (isColumn) {
+    const hasAccent = labCase.spec.params.accent !== null;
+    const wordCount = splitWords(labCase.spec.phrase).length;
+    const rowCountOk = rows.length === wordCount;
+    const leftEdges = checkColumnLeftEdges(rows);
+    const scaleShape = checkColumnScaleShape(rows, hasAccent);
+    const noOverlap = checkColumnNoOverlap(rows);
+    const topMarginOk = Math.abs(vertical.topMarginPx - COLUMN_MARGIN_TOP_PX) <= COLUMN_MARGIN_TOP_EPS_PX;
+    const { accent: accentRow, base: baseRows } = splitColumnAccentRow(rows);
+    const measurePx = computeColumnMeasure(rows, accentRow);
+    const accentInk =
+      hasAccent && accentRow !== null
+        ? checkColumnAccentInk(accentRow, measurePx)
+        : { ok: true, violations: [] as string[] };
+
+    const measureDesignPx = COLUMN_WIDTH_RATIO[labCase.spec.params.density] * POSTER_WIDTH;
+    const shrinkTriggered = measureDesignPx - measurePx > COLUMN_SHRINK_DETECT_EPS_PX;
+    if (shrinkTriggered) {
+      columnShrinkCases.push({ id: labCase.id, measureActualPx: measurePx, measureDesignPx });
+    }
+
+    const measureBoundOk = measurePx <= COLUMN_MEASURE_MAX_RATIO * POSTER_WIDTH;
+    const blockHeightPx = POSTER_HEIGHT - vertical.topMarginPx - vertical.bottomMarginPx;
+    const heightBoundOk = blockHeightPx <= COLUMN_BLOCK_HEIGHT_MAX_RATIO * POSTER_HEIGHT;
+
+    // Base kegl = the scale shared by every non-accent row (the larger of
+    // the two scale groups when an accent is present, the only group
+    // otherwise) - captured per-case so the tight/airy ratio can be checked
+    // across cases once every case has run.
+    const baseScaleRows = accentRow === null ? rows : baseRows;
+    if (baseScaleRows.length > 0) {
+      columnBaseScales.set(labCase.id, baseScaleRows[0].scale);
+    }
+
+    columnExactViolations = [
+      ...(rowCountOk ? [] : [`row count ${rows.length} != word count ${wordCount}`]),
+      ...leftEdges.violations,
+      ...scaleShape.violations,
+      ...noOverlap.violations,
+      ...(topMarginOk ? [] : [`top margin ${vertical.topMarginPx.toFixed(2)}px != ${COLUMN_MARGIN_TOP_PX}px`]),
+      ...accentInk.violations,
+    ];
+
+    extraFields = [
+      `measure=${measurePx.toFixed(2)}px${measureBoundOk ? '' : '!'} design=${measureDesignPx.toFixed(2)}px${shrinkTriggered ? ' shrink!' : ''}`,
+      `kegl-base=${((baseScaleRows[0]?.scale ?? 0) * 1000).toFixed(2)}`,
+      `top=${vertical.topMarginPx.toFixed(2)}px${topMarginOk ? '' : '!'}`,
+      `block-height=${blockHeightPx.toFixed(2)}px${heightBoundOk ? '' : '!'}`,
+      `overlap=${noOverlap.ok ? 'ok' : `FAIL:${noOverlap.violations.join('; ')}`}`,
+      `bleed=${bleed.ok ? 'ok' : 'FAIL'}(${bleed.violationCount}/${bleed.maxOverflowPx.toFixed(2)}px)`,
+    ];
+    toleranceChecks = [measureBoundOk, heightBoundOk, bleed.ok];
   } else {
     const { left, right } = checkEdgeConvergence(rows, edgePercent);
     extraFields = [
@@ -194,7 +275,7 @@ for (const labCase of selectedCases) {
   }
   toleranceChecks.push(vertical.metric.ok);
 
-  const exactViolations = [...baseExactViolations, ...gridExactViolations];
+  const exactViolations = [...baseExactViolations, ...gridExactViolations, ...columnExactViolations];
   const exactOk = exactViolations.length === 0;
   if (!exactOk) exactFailures++;
 
@@ -225,9 +306,33 @@ for (const labCase of selectedCases) {
     `paths=${pathCount}`,
     `rows=${rows.length}`,
     ...extraFields,
-    fmtVertical(vertical, isBreak || isGrid ? null : MARGIN_RATIO),
+    fmtVertical(vertical, isBreak || isGrid || isColumn ? null : MARGIN_RATIO),
   ].join(' ');
   console.log(line);
+}
+
+// Density controls the column's measure directly, so a tighter density must
+// produce a visibly larger base kegl than an airy one - checked across the
+// two density-triple cases rather than per-case, since it's a relationship
+// between two renders, not a property of either alone.
+const tightScale = columnBaseScales.get('column-density-tight');
+const airyScale = columnBaseScales.get('column-density-airy');
+if (tightScale !== undefined && airyScale !== undefined) {
+  const ratio = tightScale / airyScale;
+  const ok = ratio >= COLUMN_TIGHT_AIRY_KEGL_MIN_RATIO;
+  if (!ok) toleranceViolations++;
+  console.log(
+    `[${ok ? 'PASS' : 'FAIL'}] column tight/airy kegl ratio=${ratio.toFixed(3)} (min ${COLUMN_TIGHT_AIRY_KEGL_MIN_RATIO})${ok ? '' : '!'}`,
+  );
+}
+
+if (columnShrinkCases.length > 0) {
+  console.log('\ncolumn height-cap triggered on:');
+  for (const c of columnShrinkCases) {
+    console.log(
+      `  ${c.id}: measure actual=${c.measureActualPx.toFixed(2)}px design=${c.measureDesignPx.toFixed(2)}px`,
+    );
+  }
 }
 
 console.log(

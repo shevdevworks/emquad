@@ -202,6 +202,62 @@ const gridGrainCases: LabCase[] = [0, 1, 2, 3].map((grain) => ({
   }),
 }));
 
+const columnDensityCases: LabCase[] = (DENSITIES as readonly Density[]).map((density) => ({
+  id: `column-density-${density}`,
+  spec: spec(PHRASE_STAY_WEIRD, { mode: 'column', density, invert: false, accent: null, seed: 7 }),
+}));
+
+const columnAccentCases: LabCase[] = [
+  {
+    // "forever" (index 2), the longest word of the three.
+    id: 'column-accent-longest',
+    spec: spec(PHRASE_STAY_WEIRD, { mode: 'column', density: 'regular', accent: 2, seed: 7 }),
+  },
+  {
+    // "Stay" (index 0), the shortest word of the three.
+    id: 'column-accent-shortest',
+    spec: spec(PHRASE_STAY_WEIRD, { mode: 'column', density: 'regular', accent: 0, seed: 7 }),
+  },
+  {
+    // "the" (index 2 of 5) - the shortest word of the phrase, sitting in the
+    // middle rather than first, so the accent's own row has a non-accent
+    // neighbour on both sides.
+    id: 'column-accent-short-middle',
+    spec: spec(PHRASE_NOTHING_SAME, { mode: 'column', density: 'regular', accent: 2, seed: 11 }),
+  },
+];
+
+const columnSevenWordsCase: LabCase = {
+  id: 'column-seven-words',
+  spec: spec(PHRASE_MAKE_MORE, { mode: 'column', density: 'regular', accent: null, seed: 42 }),
+};
+
+const columnLongWordCase: LabCase = {
+  id: 'column-long-word',
+  spec: spec(PHRASE_EXTRAORDINARY, { mode: 'column', density: 'regular', accent: null, seed: 5 }),
+};
+
+const columnCyrillicCase: LabCase = {
+  id: 'column-cyrillic',
+  spec: spec(PHRASE_TISHA, { mode: 'column', density: 'regular', accent: null, seed: 3 }),
+};
+
+const columnInversionCase: LabCase = {
+  id: 'column-invert',
+  spec: spec(PHRASE_STAY_WEIRD, { mode: 'column', density: 'regular', invert: true, accent: null, seed: 7 }),
+};
+
+const columnGrainCases: LabCase[] = [0, 3].map((grain) => ({
+  id: `column-grain-${grain}`,
+  spec: spec(PHRASE_STAY_WEIRD, {
+    mode: 'column',
+    density: 'regular',
+    accent: null,
+    seed: 7,
+    grain: grain as 0 | 3,
+  }),
+}));
+
 export const CASES: readonly LabCase[] = [
   ...fixtureCases,
   ...geometryCases,
@@ -216,4 +272,11 @@ export const CASES: readonly LabCase[] = [
   ...gridAccentCases,
   gridInversionCase,
   ...gridGrainCases,
+  ...columnDensityCases,
+  ...columnAccentCases,
+  columnSevenWordsCase,
+  columnLongWordCase,
+  columnCyrillicCase,
+  columnInversionCase,
+  ...columnGrainCases,
 ];

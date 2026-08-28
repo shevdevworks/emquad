@@ -6,7 +6,7 @@ export interface ExactCheckResult {
   readonly violations: readonly string[];
 }
 
-const BANNED_SUBSTRINGS = ['<text', 'font', 'filter', 'blur', 'mask', 'foreignObject', 'Gradient'];
+const BANNED_SUBSTRINGS = ['<text', 'font', 'filter', 'blur', 'mask', 'foreignObject', 'Gradient', 'rotate('];
 const EXPECTED_SVG_OPEN_TAG = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1080 1350">';
 
 export function checkStructure(svg: string): ExactCheckResult {
@@ -536,4 +536,126 @@ export function checkGridAccentCorridor(
   const upperBound = fillCapModules + SHAPE_MAX_MODULES;
   const ok = fillModuleCount >= 1 - 1e-9 && fillModuleCount <= upperBound + 1e-9;
   return { ok, fillModuleCount, upperBound };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Column                                                                     */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Every row's left ink edge must land on the column's shared left edge - one
+ * row per word, all flush left, is the mode's defining silhouette.
+ */
+export function checkColumnLeftEdges(rows: readonly RowSpan[], epsPx = 0.05): ExactCheckResult {
+  const violations: string[] = [];
+  if (rows.length === 0) return { ok: true, violations };
+
+  const reference = rows[0].minX;
+  for (const row of rows) {
+    if (Math.abs(row.minX - reference) > epsPx) {
+      violations.push(`row at y=${row.key} left edge ${row.minX.toFixed(2)}px != ${reference.toFixed(2)}px`);
+    }
+  }
+  return { ok: violations.length === 0, violations };
+}
+
+/**
+ * Without an accent, every row shares one kegl (one distinct scale). With an
+ * accent, exactly one row breaks away to its own scale - two distinct scale
+ * values total, the odd one out applying to exactly one row.
+ */
+export function checkColumnScaleShape(rows: readonly RowSpan[], hasAccent: boolean): ExactCheckResult {
+  const groups = new Map<string, number>();
+  for (const row of rows) {
+    const key = row.scale.toFixed(6);
+    groups.set(key, (groups.get(key) ?? 0) + 1);
+  }
+  const sizes = Array.from(groups.values());
+
+  if (!hasAccent) {
+    const violations =
+      groups.size === 1 ? [] : [`expected 1 distinct scale without an accent, found ${groups.size}: ${Array.from(groups.keys()).join(', ')}`];
+    return { ok: violations.length === 0, violations };
+  }
+
+  const violations: string[] = [];
+  if (groups.size !== 2) {
+    violations.push(`expected 2 distinct scales with an accent, found ${groups.size}: ${Array.from(groups.keys()).join(', ')}`);
+  } else if (!sizes.includes(1) || !sizes.includes(rows.length - 1)) {
+    violations.push(`expected one scale used by exactly 1 row and the other by ${rows.length - 1}, found group sizes ${sizes.join(', ')}`);
+  }
+  return { ok: violations.length === 0, violations };
+}
+
+/**
+ * Splits rows into the accent row (the one whose scale is the minority value
+ * - used by exactly one row) and the rest. Derived purely from the rendered
+ * SVG, like splitGiantRow. Returns `accent: null` when there is no minority
+ * scale (no accent, or checkColumnScaleShape already failed).
+ */
+export function splitColumnAccentRow(rows: readonly RowSpan[]): { accent: RowSpan | null; base: RowSpan[] } {
+  const groups = new Map<string, RowSpan[]>();
+  for (const row of rows) {
+    const key = row.scale.toFixed(6);
+    const bucket = groups.get(key);
+    if (bucket === undefined) groups.set(key, [row]);
+    else bucket.push(row);
+  }
+
+  for (const bucket of groups.values()) {
+    if (bucket.length === 1 && groups.size > 1) {
+      const accent = bucket[0];
+      return { accent, base: rows.filter((r) => r !== accent) };
+    }
+  }
+  return { accent: null, base: rows.slice() };
+}
+
+/**
+ * The measure is never exposed by column.ts (private by design), but it is
+ * exactly reconstructible from the render: the base kegl is solved so the
+ * widest non-accent word's ink exactly fills the measure, so that width IS
+ * the measure.
+ */
+export function computeColumnMeasure(rows: readonly RowSpan[], accentRow: RowSpan | null): number {
+  const baseRows = accentRow === null ? rows : rows.filter((r) => r !== accentRow);
+  let widest = 0;
+  for (const row of baseRows) {
+    const width = row.maxX - row.minX;
+    if (width > widest) widest = width;
+  }
+  return widest;
+}
+
+/**
+ * No two vertically-adjacent lines may touch or overlap: the bottom edge of
+ * the upper line's ink must sit strictly above the top edge of the lower
+ * line's ink. `epsPx` only absorbs floating/rounding noise near the
+ * boundary, it does not permit deliberate overlap.
+ */
+export function checkColumnNoOverlap(rows: readonly RowSpan[], epsPx = 0.05): ExactCheckResult {
+  const violations: string[] = [];
+  const sorted = rows.slice().sort((a, b) => a.minY - b.minY);
+  for (let i = 1; i < sorted.length; i++) {
+    const gap = sorted[i].minY - sorted[i - 1].maxY;
+    if (gap <= -epsPx) {
+      violations.push(
+        `row at y=${sorted[i - 1].key} overlaps row at y=${sorted[i].key}: gap=${gap.toFixed(2)}px`,
+      );
+    }
+  }
+  return { ok: violations.length === 0, violations };
+}
+
+export function checkColumnAccentInk(accentRow: RowSpan, measurePx: number, marginSideMin = 54): ExactCheckResult {
+  const violations: string[] = [];
+  const width = accentRow.maxX - accentRow.minX;
+  if (!(width > measurePx)) {
+    violations.push(`accent ink width ${width.toFixed(2)}px is not greater than the measure ${measurePx.toFixed(2)}px`);
+  }
+  const rightLimit = POSTER_WIDTH - marginSideMin;
+  if (accentRow.maxX > rightLimit + 0.05) {
+    violations.push(`accent right edge ${accentRow.maxX.toFixed(2)}px exceeds ${rightLimit.toFixed(2)}px`);
+  }
+  return { ok: violations.length === 0, violations };
 }
