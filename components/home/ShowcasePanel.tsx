@@ -36,7 +36,7 @@ export interface ShowcasePanelProps {
 }
 
 const LAYER_LABELS: Record<LayerKey, string> = {
-  photo: 'PHOTO',
+  photo: 'VIDEO',
   vignette: 'VIGNETTE',
   light: 'LIGHT',
   motion: 'MOTION',
@@ -74,12 +74,12 @@ export function ShowcasePanel({
       </div>
 
       <div className="mb-2">
-        <div className="text-white/50">photo visibility</div>
+        <div className="text-white/50">video visibility</div>
         <div className="flex items-center gap-2">
           <input
             type="range"
             min={0}
-            max={60}
+            max={100}
             step={5}
             value={photoOpacity}
             onChange={(e) => onPhotoOpacityChange(Number(e.target.value))}

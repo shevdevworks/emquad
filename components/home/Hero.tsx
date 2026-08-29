@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import type { PosterSpec } from '@/lib/poster/types';
 import { ACCENT_COLOR } from '@/lib/poster/render';
 import { SHOWCASE_COMPOSITIONS } from './showcase-phrases';
@@ -31,17 +31,42 @@ function grainOpacityFor(step: ThreeStep): number {
   return step === 0 ? 0.035 : step === 1 ? 0.07 : 0.11;
 }
 
+function subscribeReducedMotion(callback: () => void) {
+  const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
+  mq.addEventListener('change', callback);
+  return () => mq.removeEventListener('change', callback);
+}
+
+function getReducedMotionSnapshot(): boolean {
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+
+function getReducedMotionServerSnapshot(): boolean {
+  return false;
+}
+
 export function Hero({ initialSpec, initialSvg }: HeroProps) {
   const [index, setIndex] = useState(0);
   const [renderFn, setRenderFn] = useState<RenderFn | null>(null);
 
-  const [layers, setLayers] = useState({ photo: true, vignette: false, light: false, motion: false, grain: true });
+  const [layers, setLayers] = useState({
+    photo: true,
+    vignette: false,
+    light: false,
+    motion: false,
+    grain: true,
+  });
   const [motionSpeed, setMotionSpeed] = useState<MotionSpeed>('off');
   const [grainStep, setGrainStep] = useState<ThreeStep>(1);
   const [photoOpacity, setPhotoOpacity] = useState(60);
   const [transitionStyle, setTransitionStyle] = useState<TransitionStyle>('hard');
   const [accentColor, setAccentColor] = useState<string>(ACCENT_COLOR);
-  const [panelVisible, setPanelVisible] = useState(true);
+  const [panelVisible, setPanelVisible] = useState(false);
+  const reducedMotion = useSyncExternalStore(
+    subscribeReducedMotion,
+    getReducedMotionSnapshot,
+    getReducedMotionServerSnapshot,
+  );
 
   const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
 
@@ -152,18 +177,35 @@ export function Hero({ initialSpec, initialSvg }: HeroProps) {
         />
       )}
 
-      {layers.photo && (
-        <div
-          aria-hidden
-          className="fixed inset-0 -z-40"
-          style={{
-            backgroundImage: "url('/bg-smoke.jpg')",
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            opacity: photoOpacity / 100,
-          }}
-        />
-      )}
+      {layers.photo &&
+        (reducedMotion ? (
+          // next/image's `fill` mode hardcodes position:absolute inline, which can't be
+          // overridden to position:fixed (required to match the other background layers) -
+          // plain <img> is the only way to get a fixed, full-viewport decorative layer here.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            aria-hidden
+            src="/smoke-poster.jpg"
+            alt=""
+            className="fixed inset-0 h-full w-full object-cover object-center -z-40"
+            style={{ opacity: photoOpacity / 100 }}
+          />
+        ) : (
+          <video
+            aria-hidden
+            autoPlay
+            muted
+            loop
+            playsInline
+            poster="/smoke-poster.jpg"
+            preload="metadata"
+            className="fixed inset-0 h-full w-full object-cover object-center -z-40"
+            style={{ opacity: photoOpacity / 100 }}
+          >
+            <source src="/smoke-loop.webm" type="video/webm" />
+            <source src="/smoke-loop.mp4" type="video/mp4" />
+          </video>
+        ))}
 
       {layers.light && (
         <div
@@ -229,60 +271,62 @@ export function Hero({ initialSpec, initialSvg }: HeroProps) {
         </div>
       </div>
 
-      <div
-        data-composition-counter
-        className="fixed bottom-8 right-8 z-20"
-        style={{ color: TEXT_MUTED, fontFamily: 'Onest', fontWeight: 500, letterSpacing: '0.08em', fontSize: '12px' }}
-      >
-        {String(index + 1).padStart(2, '0')} / {String(SHOWCASE_COMPOSITIONS.length).padStart(2, '0')}
-      </div>
-
-      <div className="relative z-10 flex h-full w-full flex-col items-center justify-center px-6">
-        <div
-          key={index}
-          data-poster-wrapper
-          className={
-            'aspect-[4/5] [&_svg]:block [&_svg]:h-full [&_svg]:w-full' +
-            (transitionStyle === 'soft' ? ' home-poster-soft' : '')
-          }
-          style={{ width: 'min(min(70vh, calc(100vh - 250px)) * 0.8, 100%)' }}
-          dangerouslySetInnerHTML={{ __html: svg }}
-        />
-
-        <div
-          className="mt-[40px] text-center text-[12px] uppercase"
-          style={{ color: TEXT_MUTED, fontFamily: 'Onest', fontWeight: 500, letterSpacing: '0.32em' }}
-        >
-          TYPOGRAPHIC MANIFESTOS
-        </div>
-
-        <a
-          href="/create"
-          className="mt-[18px] text-center text-[14px] uppercase transition-opacity hover:opacity-70"
-          style={{ color: TEXT_PRIMARY, fontFamily: 'Onest', fontWeight: 800, letterSpacing: '0.14em' }}
-        >
-          START
-        </a>
-      </div>
-
       {panelVisible && (
-        <ShowcasePanel
-          layers={layers}
-          onToggleLayer={toggleLayer}
-          motionSpeed={motionSpeed}
-          onMotionSpeedChange={setMotionSpeed}
-          grainStep={grainStep}
-          onGrainStepChange={setGrainStep}
-          photoOpacity={photoOpacity}
-          onPhotoOpacityChange={setPhotoOpacity}
-          transitionStyle={transitionStyle}
-          onTransitionStyleChange={setTransitionStyle}
-          accentColor={accentColor}
-          onAccentColorChange={setAccentColor}
-          onAdvance={handleManualAdvance}
-          currentMode={currentSpec.params.mode}
-          currentSeed={currentSpec.params.seed}
-        />
+        <>
+          <div
+            data-composition-counter
+            className="fixed bottom-8 right-8 z-20"
+            style={{ color: TEXT_MUTED, fontFamily: 'Onest', fontWeight: 500, letterSpacing: '0.08em', fontSize: '12px' }}
+          >
+            {String(index + 1).padStart(2, '0')} / {String(SHOWCASE_COMPOSITIONS.length).padStart(2, '0')}
+          </div>
+
+          <div className="relative z-10 flex h-full w-full flex-col items-center justify-center px-6">
+            <div
+              key={index}
+              data-poster-wrapper
+              className={
+                'aspect-[4/5] [&_svg]:block [&_svg]:h-full [&_svg]:w-full' +
+                (transitionStyle === 'soft' ? ' home-poster-soft' : '')
+              }
+              style={{ width: 'min(min(70vh, calc(100vh - 250px)) * 0.8, 100%)' }}
+              dangerouslySetInnerHTML={{ __html: svg }}
+            />
+
+            <div
+              className="mt-[40px] text-center text-[12px] uppercase"
+              style={{ color: TEXT_MUTED, fontFamily: 'Onest', fontWeight: 500, letterSpacing: '0.32em' }}
+            >
+              TYPOGRAPHIC MANIFESTOS
+            </div>
+
+            <a
+              href="/create"
+              className="mt-[18px] text-center text-[14px] uppercase transition-opacity hover:opacity-70"
+              style={{ color: TEXT_PRIMARY, fontFamily: 'Onest', fontWeight: 800, letterSpacing: '0.14em' }}
+            >
+              START
+            </a>
+          </div>
+
+          <ShowcasePanel
+            layers={layers}
+            onToggleLayer={toggleLayer}
+            motionSpeed={motionSpeed}
+            onMotionSpeedChange={setMotionSpeed}
+            grainStep={grainStep}
+            onGrainStepChange={setGrainStep}
+            photoOpacity={photoOpacity}
+            onPhotoOpacityChange={setPhotoOpacity}
+            transitionStyle={transitionStyle}
+            onTransitionStyleChange={setTransitionStyle}
+            accentColor={accentColor}
+            onAccentColorChange={setAccentColor}
+            onAdvance={handleManualAdvance}
+            currentMode={currentSpec.params.mode}
+            currentSeed={currentSpec.params.seed}
+          />
+        </>
       )}
     </div>
   );
