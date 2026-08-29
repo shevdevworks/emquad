@@ -12,6 +12,8 @@ const PALETTE = {
   accent: '#FF3B2F', // placeholder signal color, not swapped by invert
 } as const;
 
+export const ACCENT_COLOR = PALETTE.accent;
+
 export function render(spec: PosterSpec): string {
   if (
     spec.params.mode !== 'stack' &&

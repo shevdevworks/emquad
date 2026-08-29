@@ -84,6 +84,12 @@ function groupWords(widths: readonly number[], spaceWidth: number, groupCount: n
     i++;
 
     while (i < widths.length) {
+      // Reserve at least one word per group still owed after this one -
+      // otherwise a greedy run of close-to-target widths can swallow every
+      // remaining word, leaving the mandatory last group empty.
+      const wordsLeftIfTaken = widths.length - (i + 1);
+      if (wordsLeftIfTaken < remainingGroups - 1) break;
+
       const withNext = groupWidth + spaceWidth + widths[i];
       if (Math.abs(withNext - target) >= Math.abs(groupWidth - target)) break;
       groupWidth = withNext;
