@@ -240,7 +240,7 @@ export function Hero() {
             <div
               style={{ color: TEXT_MUTED, fontFamily: 'Onest', fontWeight: 500, letterSpacing: '0.18em', fontSize: '11px' }}
             >
-              SIX WORDS, ONE COMPOSITION
+              A TYPOGRAPHIC POSTER GENERATOR
             </div>
             <h1
               style={{
@@ -251,7 +251,7 @@ export function Hero() {
                 lineHeight: 1.05,
               }}
             >
-              Turn a phrase into a manifesto
+              Built from letters, not templates
             </h1>
             <p
               style={{
@@ -263,9 +263,9 @@ export function Hero() {
                 maxWidth: '460px',
               }}
             >
-              Type three to seven words and get a poster built from their shape alone - no
-              templates, no stock art. Every version gets a permanent link and a file you
-              can keep.
+              Every poster is computed, not assembled. Your phrase decides
+              where the lines break, how large the letters grow, and how the
+              ink fills the canvas.
             </p>
 
             <div className="flex gap-3">
@@ -303,9 +303,9 @@ export function Hero() {
 
             <div className="flex gap-8 pt-2">
               {[
-                { label: 'PERMALINK', text: 'Every poster gets its own link.' },
-                { label: 'DOWNLOAD', text: 'PNG or SVG, yours to keep.' },
-                { label: 'NO ACCOUNT', text: 'Type a phrase, get a poster.' },
+                { label: 'COMPUTED', text: 'The layout comes from the letters, not a template.' },
+                { label: 'CONTROLLED', text: 'Every parameter is yours to move.' },
+                { label: 'PERMANENT', text: 'A link and a file for each result.' },
               ].map((item) => (
                 <div key={item.label} className="flex flex-col gap-1.5">
                   <span
