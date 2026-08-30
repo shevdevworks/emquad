@@ -138,7 +138,7 @@ export function Hero({ initialSpec, initialSvg }: HeroProps) {
   const modeText = currentSpec.params.mode.toUpperCase();
 
   return (
-    <div className="relative isolate h-full w-full overflow-hidden bg-black">
+    <div className="relative isolate h-full w-full overflow-hidden bg-black emq-hero-root">
       <style>{`
         @font-face {
           font-family: 'Onest';
@@ -195,8 +195,18 @@ export function Hero({ initialSpec, initialSvg }: HeroProps) {
         }
 
         @media (max-width: 1023px) {
+          .emq-hero-root {
+            height: auto;
+            overflow: visible;
+          }
+          .emq-content-shell {
+            position: static;
+            padding: 32px;
+            box-sizing: border-box;
+            min-height: 100dvh;
+          }
           .emq-card-wrap {
-            --poster-h: min(60vh, calc(100vh - 200px), calc((100vw - 120px) / 0.8));
+            --poster-h: min(60dvh, calc((100vw - 120px) / 0.8));
           }
           .emq-card {
             width: calc(var(--poster-h) * 0.8 + 56px);
@@ -290,7 +300,7 @@ export function Hero({ initialSpec, initialSvg }: HeroProps) {
 
       <div aria-hidden data-frame-border className="pointer-events-none fixed inset-6 z-20 border border-white/12" />
 
-      <div className="absolute inset-8 z-20 flex flex-col">
+      <div className="absolute inset-8 z-20 flex flex-col emq-content-shell">
         <div className="flex h-12 shrink-0 items-center justify-between">
           <span
             style={{ color: TEXT_PRIMARY, fontFamily: 'Onest', fontWeight: 800, letterSpacing: '0.08em', fontSize: '13px' }}

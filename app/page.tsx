@@ -7,7 +7,16 @@ export default async function Page() {
   const initialSvg = render(initialSpec);
 
   return (
-    <div className="h-dvh overflow-hidden">
+    <div className="h-dvh overflow-hidden emq-page-shell">
+      <style>{`
+        @media (max-width: 1023px) {
+          .emq-page-shell {
+            height: auto;
+            min-height: 100dvh;
+            overflow: visible;
+          }
+        }
+      `}</style>
       <Hero initialSpec={initialSpec} initialSvg={initialSvg} />
     </div>
   );
