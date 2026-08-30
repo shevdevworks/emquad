@@ -1,21 +1,9 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import type { PosterSpec } from '@/lib/poster/types';
-import { ACCENT_COLOR } from '@/lib/poster/render';
-import { SHOWCASE_COMPOSITIONS } from './showcase-phrases';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { ACCENT_CANDIDATES, ShowcasePanel } from './ShowcasePanel';
 
-export interface HeroProps {
-  readonly initialSpec: PosterSpec;
-  readonly initialSvg: string;
-}
-
-type RenderFn = (spec: PosterSpec) => string;
-type TransitionStyle = 'hard' | 'soft';
 type ThreeStep = 0 | 1 | 2;
-
-const CYCLE_MS = 6000;
 
 // Single source for the site's own text colors - referenced everywhere text
 // color is set, never re-declared.
@@ -40,10 +28,7 @@ function getReducedMotionServerSnapshot(): boolean {
   return false;
 }
 
-export function Hero({ initialSpec, initialSvg }: HeroProps) {
-  const [index, setIndex] = useState(0);
-  const [renderFn, setRenderFn] = useState<RenderFn | null>(null);
-
+export function Hero() {
   const [layers, setLayers] = useState({
     photo: true,
     vignette: false,
@@ -52,60 +37,14 @@ export function Hero({ initialSpec, initialSvg }: HeroProps) {
   });
   const [grainStep, setGrainStep] = useState<ThreeStep>(1);
   const [photoOpacity, setPhotoOpacity] = useState(60);
-  const [transitionStyle, setTransitionStyle] = useState<TransitionStyle>('hard');
   const [accentColor, setAccentColor] = useState<string>(ACCENT_CANDIDATES[0]);
-  const [posterVisible, setPosterVisible] = useState(true);
+  const [phraseAccentOn, setPhraseAccentOn] = useState(false);
   const [panelVisible, setPanelVisible] = useState(false);
   const reducedMotion = useSyncExternalStore(
     subscribeReducedMotion,
     getReducedMotionSnapshot,
     getReducedMotionServerSnapshot,
   );
-
-  const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
-
-  useEffect(() => {
-    let cancelled = false;
-    void import('@/lib/poster/render').then(({ render }) => {
-      if (!cancelled) setRenderFn(() => render);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  const currentSpec = SHOWCASE_COMPOSITIONS[index] ?? initialSpec;
-
-  // render() is pure and synchronous, so the current composition's markup is a
-  // plain derived value - no effect/setState needed to keep it in sync with
-  // `index`/`renderFn`. The accent-color override is a presentation-layer
-  // string substitution on render()'s own output, proven complete and
-  // precise for every mode (see plan): the literal ACCENT_COLOR hex appears
-  // only where accent color is actually drawn, always uppercase, never in
-  // any other form.
-  const svg = useMemo(() => {
-    const base = renderFn === null ? initialSvg : renderFn(currentSpec);
-    return accentColor === ACCENT_COLOR ? base : base.replaceAll(ACCENT_COLOR, accentColor);
-  }, [renderFn, currentSpec, initialSvg, accentColor]);
-
-  const advance = useCallback(() => {
-    setIndex((i) => (i + 1) % SHOWCASE_COMPOSITIONS.length);
-  }, []);
-
-  const startInterval = useCallback(() => {
-    clearInterval(intervalRef.current);
-    intervalRef.current = setInterval(advance, CYCLE_MS);
-  }, [advance]);
-
-  useEffect(() => {
-    startInterval();
-    return () => clearInterval(intervalRef.current);
-  }, [startInterval]);
-
-  function handleManualAdvance() {
-    advance();
-    startInterval();
-  }
 
   function toggleLayer(key: 'photo' | 'vignette' | 'light' | 'grain') {
     setLayers((l) => ({ ...l, [key]: !l[key] }));
@@ -127,16 +66,6 @@ export function Hero({ initialSpec, initialSvg }: HeroProps) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  const railTextStyle = {
-    color: TEXT_MUTED,
-    fontFamily: 'Onest',
-    fontWeight: 500,
-    letterSpacing: '0.18em',
-    fontSize: '11px',
-  } as const;
-  const counterText = `${String(index + 1).padStart(2, '0')} / ${String(SHOWCASE_COMPOSITIONS.length).padStart(2, '0')}`;
-  const modeText = currentSpec.params.mode.toUpperCase();
-
   return (
     <div className="relative isolate h-full w-full overflow-hidden bg-black emq-hero-root">
       <style>{`
@@ -152,13 +81,6 @@ export function Hero({ initialSpec, initialSvg }: HeroProps) {
           font-weight: 800;
           font-display: swap;
         }
-        .home-poster-soft {
-          animation: home-poster-fade-in 350ms ease-out;
-        }
-        @keyframes home-poster-fade-in {
-          from { opacity: 0; }
-          to { opacity: 1; }
-        }
 
         .emq-glass {
           background: rgba(255, 255, 255, 0.04);
@@ -170,28 +92,26 @@ export function Hero({ initialSpec, initialSvg }: HeroProps) {
         .emq-card-wrap {
           position: relative;
           perspective: 1200px;
-          --poster-h: min(74vh, calc(100vh - 200px), calc((100vw - 788px) / 0.8));
-        }
-        .emq-card-ghost {
-          position: absolute;
-          inset: 0;
-          transform: translate(20px, -20px);
-          border: 1px solid rgba(255, 255, 255, 0.06);
-          border-radius: 16px;
-          pointer-events: none;
-          z-index: 0;
         }
         .emq-card {
           position: relative;
           z-index: 1;
-          padding: 28px;
+          padding: 40px;
           border-radius: 16px;
-          width: calc(var(--poster-h) * 0.8 + 248px);
-          height: calc(var(--poster-h) + 56px);
-          transition: transform 500ms cubic-bezier(0.22, 1, 0.36, 1);
+          width: min(clamp(420px, 47.2vw, 680px), calc((100vh - 200px) * 1.35));
+          aspect-ratio: 1.35;
+          container-type: inline-size;
+          display: flex;
+          flex-direction: column;
+          justify-content: flex-end;
+          transition: transform 500ms cubic-bezier(0.22, 1, 0.36, 1),
+            border-color 500ms cubic-bezier(0.22, 1, 0.36, 1),
+            box-shadow 500ms cubic-bezier(0.22, 1, 0.36, 1);
         }
         .emq-card-wrap:hover .emq-card {
           transform: rotateY(-10deg);
+          border-color: var(--accent);
+          box-shadow: 0 0 32px 0 color-mix(in srgb, var(--accent) 28%, transparent);
         }
 
         @media (max-width: 1023px) {
@@ -206,14 +126,10 @@ export function Hero({ initialSpec, initialSvg }: HeroProps) {
             min-height: 100dvh;
           }
           .emq-card-wrap {
-            --poster-h: min(60dvh, calc((100vw - 120px) / 0.8));
+            width: 100%;
           }
           .emq-card {
-            width: calc(var(--poster-h) * 0.8 + 56px);
-            height: auto;
-          }
-          .emq-card-ghost {
-            display: none;
+            width: 100%;
           }
           .emq-card-wrap:hover .emq-card {
             transform: none;
@@ -221,9 +137,6 @@ export function Hero({ initialSpec, initialSvg }: HeroProps) {
         }
 
         @media (prefers-reduced-motion: reduce) {
-          .emq-card {
-            transition: none;
-          }
           .emq-card-wrap:hover .emq-card {
             transform: none;
           }
@@ -298,8 +211,6 @@ export function Hero({ initialSpec, initialSvg }: HeroProps) {
         </div>
       )}
 
-      <div aria-hidden data-frame-border className="pointer-events-none fixed inset-6 z-20 border border-white/12" />
-
       <div className="absolute inset-8 z-20 flex flex-col emq-content-shell">
         <div className="flex h-12 shrink-0 items-center justify-between">
           <span
@@ -325,7 +236,7 @@ export function Hero({ initialSpec, initialSvg }: HeroProps) {
         </div>
 
         <div className="flex flex-1 flex-col items-center gap-10 lg:flex-row lg:items-center lg:justify-between lg:gap-[72px] lg:pr-6">
-          <div className="flex w-full min-w-0 max-w-[520px] flex-col gap-5 lg:min-w-[380px] lg:max-w-[520px] lg:flex-1">
+          <div className="flex w-full min-w-0 max-w-[520px] flex-col gap-5 lg:min-w-[380px] lg:max-w-[600px] lg:flex-1">
             <div
               style={{ color: TEXT_MUTED, fontFamily: 'Onest', fontWeight: 500, letterSpacing: '0.18em', fontSize: '11px' }}
             >
@@ -416,44 +327,23 @@ export function Hero({ initialSpec, initialSvg }: HeroProps) {
             </div>
           </div>
 
-          <div className="emq-card-wrap shrink-0">
-            <div className="emq-card-ghost" />
+          {/* '--accent' is a custom property, not a standard CSSProperties key - same
+              pattern the removed MOTION layer used for '--drift-duration'. */}
+          <div className="emq-card-wrap shrink-0" style={{ ['--accent' as string]: accentColor }}>
             <div className="emq-card emq-glass">
-              <div className="flex h-full flex-col lg:flex-row">
-                <div
-                  key={index}
-                  data-poster-wrapper
-                  className={
-                    '[&_svg]:block [&_svg]:h-full [&_svg]:w-full' +
-                    (transitionStyle === 'soft' ? ' home-poster-soft' : '')
-                  }
-                  style={{ width: 'calc(var(--poster-h) * 0.8)', height: 'var(--poster-h)' }}
-                  {...(posterVisible ? { dangerouslySetInnerHTML: { __html: svg } } : {})}
-                />
-
-                {/* vertical divider - desktop rail layout only */}
-                <div className="hidden w-8 shrink-0 items-center justify-center lg:flex">
-                  <div style={{ width: '1px', height: '100%', background: 'rgba(255,255,255,0.10)' }} />
-                </div>
-
-                {/* mode + counter row - narrow-screen layout only */}
-                <div className="mt-4 lg:hidden">
-                  <div style={{ height: '1px', background: 'rgba(255,255,255,0.10)' }} />
-                  <div className="mt-4 flex items-center justify-between">
-                    <span style={railTextStyle}>{modeText}</span>
-                    <span data-composition-counter style={railTextStyle}>
-                      {counterText}
-                    </span>
-                  </div>
-                </div>
-
-                {/* rail, bottom-aligned - desktop layout only */}
-                <div className="hidden w-40 shrink-0 flex-col justify-end lg:flex">
-                  <span style={railTextStyle}>{modeText}</span>
-                  <span data-composition-counter style={{ ...railTextStyle, marginTop: '8px' }}>
-                    {counterText}
-                  </span>
-                </div>
+              <div
+                style={{
+                  fontFamily: 'Onest',
+                  fontWeight: 800,
+                  fontSize: 'clamp(40px, 15.5cqi, 104px)',
+                  lineHeight: 0.95,
+                  letterSpacing: '-0.02em',
+                  color: phraseAccentOn ? accentColor : TEXT_PRIMARY,
+                }}
+              >
+                <div style={{ whiteSpace: 'nowrap' }}>A PHRASE</div>
+                <div style={{ whiteSpace: 'nowrap' }}>HAS A</div>
+                <div style={{ whiteSpace: 'nowrap' }}>SHAPE</div>
               </div>
             </div>
           </div>
@@ -468,15 +358,10 @@ export function Hero({ initialSpec, initialSvg }: HeroProps) {
           onGrainStepChange={setGrainStep}
           photoOpacity={photoOpacity}
           onPhotoOpacityChange={setPhotoOpacity}
-          transitionStyle={transitionStyle}
-          onTransitionStyleChange={setTransitionStyle}
           accentColor={accentColor}
           onAccentColorChange={setAccentColor}
-          posterVisible={posterVisible}
-          onPosterVisibleChange={setPosterVisible}
-          onAdvance={handleManualAdvance}
-          currentMode={currentSpec.params.mode}
-          currentSeed={currentSpec.params.seed}
+          phraseAccentOn={phraseAccentOn}
+          onPhraseAccentChange={setPhraseAccentOn}
         />
       )}
     </div>

@@ -8,12 +8,9 @@
  * Must never ship to production.
  */
 
-import type { Mode } from '@/lib/poster/types';
-
-export const ACCENT_CANDIDATES = ['#FF6B2C', '#D6F24A', '#7C8AA0', '#6C9BD2'] as const;
+export const ACCENT_CANDIDATES = ['#E8E4D9', '#00E5A0', '#FFD400', '#C4462F', '#7B61FF', '#B8FF3C'] as const;
 
 type LayerKey = 'photo' | 'vignette' | 'light' | 'grain';
-type TransitionStyle = 'hard' | 'soft';
 type ThreeStep = 0 | 1 | 2;
 
 export interface ShowcasePanelProps {
@@ -23,15 +20,10 @@ export interface ShowcasePanelProps {
   readonly onGrainStepChange: (step: ThreeStep) => void;
   readonly photoOpacity: number;
   readonly onPhotoOpacityChange: (opacity: number) => void;
-  readonly transitionStyle: TransitionStyle;
-  readonly onTransitionStyleChange: (style: TransitionStyle) => void;
   readonly accentColor: string;
   readonly onAccentColorChange: (color: string) => void;
-  readonly posterVisible: boolean;
-  readonly onPosterVisibleChange: (visible: boolean) => void;
-  readonly onAdvance: () => void;
-  readonly currentMode: Mode;
-  readonly currentSeed: number;
+  readonly phraseAccentOn: boolean;
+  readonly onPhraseAccentChange: (on: boolean) => void;
 }
 
 const LAYER_LABELS: Record<LayerKey, string> = {
@@ -48,20 +40,13 @@ export function ShowcasePanel({
   onGrainStepChange,
   photoOpacity,
   onPhotoOpacityChange,
-  transitionStyle,
-  onTransitionStyleChange,
   accentColor,
   onAccentColorChange,
-  posterVisible,
-  onPosterVisibleChange,
-  onAdvance,
-  currentMode,
-  currentSeed,
+  phraseAccentOn,
+  onPhraseAccentChange,
 }: ShowcasePanelProps) {
   return (
     <div className="fixed bottom-8 left-8 z-50 w-64 rounded border border-white/15 bg-black/70 p-3 font-mono text-[11px] text-white/80 backdrop-blur-sm">
-      <div className="mb-2 text-white/50">{currentMode} · seed {currentSeed}</div>
-
       <div className="mb-2 flex flex-col gap-1">
         {(Object.keys(LAYER_LABELS) as LayerKey[]).map((key) => (
           <label key={key} className="flex items-center gap-2">
@@ -89,8 +74,8 @@ export function ShowcasePanel({
 
       <div className="mb-2">
         <label className="flex items-center gap-2">
-          <input type="checkbox" checked={posterVisible} onChange={(e) => onPosterVisibleChange(e.target.checked)} />
-          POSTER
+          <input type="checkbox" checked={phraseAccentOn} onChange={(e) => onPhraseAccentChange(e.target.checked)} />
+          PHRASE ACCENT
         </label>
       </div>
 
@@ -106,23 +91,6 @@ export function ShowcasePanel({
                 onChange={() => onGrainStepChange(step)}
               />
               {step}
-            </label>
-          ))}
-        </div>
-      </div>
-
-      <div className="mb-2">
-        <div className="text-white/50">transition</div>
-        <div className="flex gap-2">
-          {(['hard', 'soft'] as TransitionStyle[]).map((style) => (
-            <label key={style} className="flex items-center gap-1">
-              <input
-                type="radio"
-                name="transition-style"
-                checked={transitionStyle === style}
-                onChange={() => onTransitionStyleChange(style)}
-              />
-              {style}
             </label>
           ))}
         </div>
@@ -145,14 +113,6 @@ export function ShowcasePanel({
           ))}
         </div>
       </div>
-
-      <button
-        type="button"
-        onClick={onAdvance}
-        className="w-full rounded border border-white/20 py-1 text-white/80 hover:bg-white/10"
-      >
-        next
-      </button>
     </div>
   );
 }
