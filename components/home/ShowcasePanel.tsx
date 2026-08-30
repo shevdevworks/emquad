@@ -10,18 +10,15 @@
 
 import type { Mode } from '@/lib/poster/types';
 
-export const ACCENT_CANDIDATES = ['#FF3B2F', '#FF5B34', '#E8402F', '#FF7A45'] as const;
+export const ACCENT_CANDIDATES = ['#FF6B2C', '#D6F24A', '#7C8AA0', '#6C9BD2'] as const;
 
-type LayerKey = 'photo' | 'vignette' | 'light' | 'motion' | 'grain';
-type MotionSpeed = 'slow' | 'medium' | 'off';
+type LayerKey = 'photo' | 'vignette' | 'light' | 'grain';
 type TransitionStyle = 'hard' | 'soft';
 type ThreeStep = 0 | 1 | 2;
 
 export interface ShowcasePanelProps {
   readonly layers: Record<LayerKey, boolean>;
   readonly onToggleLayer: (key: LayerKey) => void;
-  readonly motionSpeed: MotionSpeed;
-  readonly onMotionSpeedChange: (speed: MotionSpeed) => void;
   readonly grainStep: ThreeStep;
   readonly onGrainStepChange: (step: ThreeStep) => void;
   readonly photoOpacity: number;
@@ -30,6 +27,8 @@ export interface ShowcasePanelProps {
   readonly onTransitionStyleChange: (style: TransitionStyle) => void;
   readonly accentColor: string;
   readonly onAccentColorChange: (color: string) => void;
+  readonly posterVisible: boolean;
+  readonly onPosterVisibleChange: (visible: boolean) => void;
   readonly onAdvance: () => void;
   readonly currentMode: Mode;
   readonly currentSeed: number;
@@ -39,15 +38,12 @@ const LAYER_LABELS: Record<LayerKey, string> = {
   photo: 'VIDEO',
   vignette: 'VIGNETTE',
   light: 'LIGHT',
-  motion: 'MOTION',
   grain: 'GRAIN',
 };
 
 export function ShowcasePanel({
   layers,
   onToggleLayer,
-  motionSpeed,
-  onMotionSpeedChange,
   grainStep,
   onGrainStepChange,
   photoOpacity,
@@ -56,6 +52,8 @@ export function ShowcasePanel({
   onTransitionStyleChange,
   accentColor,
   onAccentColorChange,
+  posterVisible,
+  onPosterVisibleChange,
   onAdvance,
   currentMode,
   currentSeed,
@@ -90,20 +88,10 @@ export function ShowcasePanel({
       </div>
 
       <div className="mb-2">
-        <div className="text-white/50">motion speed</div>
-        <div className="flex gap-2">
-          {(['slow', 'medium', 'off'] as MotionSpeed[]).map((speed) => (
-            <label key={speed} className="flex items-center gap-1">
-              <input
-                type="radio"
-                name="motion-speed"
-                checked={motionSpeed === speed}
-                onChange={() => onMotionSpeedChange(speed)}
-              />
-              {speed}
-            </label>
-          ))}
-        </div>
+        <label className="flex items-center gap-2">
+          <input type="checkbox" checked={posterVisible} onChange={(e) => onPosterVisibleChange(e.target.checked)} />
+          POSTER
+        </label>
       </div>
 
       <div className="mb-2">
