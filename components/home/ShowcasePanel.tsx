@@ -10,6 +10,9 @@
 
 export const ACCENT_CANDIDATES = ['#E8E4D9', '#00E5A0', '#FFD400', '#C4462F', '#7B61FF', '#B8FF3C'] as const;
 
+export const FRAME_VALUES = ['none', 'hairline', 'glass'] as const;
+export type Frame = (typeof FRAME_VALUES)[number];
+
 type LayerKey = 'photo' | 'vignette' | 'light' | 'grain';
 type ThreeStep = 0 | 1 | 2;
 
@@ -24,6 +27,8 @@ export interface ShowcasePanelProps {
   readonly onAccentColorChange: (color: string) => void;
   readonly phraseAccentOn: boolean;
   readonly onPhraseAccentChange: (on: boolean) => void;
+  readonly frame: Frame;
+  readonly onFrameChange: (frame: Frame) => void;
 }
 
 const LAYER_LABELS: Record<LayerKey, string> = {
@@ -44,6 +49,8 @@ export function ShowcasePanel({
   onAccentColorChange,
   phraseAccentOn,
   onPhraseAccentChange,
+  frame,
+  onFrameChange,
 }: ShowcasePanelProps) {
   return (
     <div className="fixed bottom-8 left-8 z-50 w-64 rounded border border-white/15 bg-black/70 p-3 font-mono text-[11px] text-white/80 backdrop-blur-sm">
@@ -91,6 +98,18 @@ export function ShowcasePanel({
                 onChange={() => onGrainStepChange(step)}
               />
               {step}
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <div className="mb-2">
+        <div className="text-white/50">poster frame</div>
+        <div className="flex gap-2">
+          {FRAME_VALUES.map((value) => (
+            <label key={value} className="flex items-center gap-1">
+              <input type="radio" name="frame" checked={frame === value} onChange={() => onFrameChange(value)} />
+              {value}
             </label>
           ))}
         </div>

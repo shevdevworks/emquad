@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { render } from '@/lib/poster/render';
 import { getPosterByCode, posterSpecFromRow } from '@/lib/db/queries';
+import { PosterDisplay } from '@/components/poster/PosterDisplay';
 
 export async function generateMetadata({
   params,
@@ -29,18 +30,5 @@ export default async function Page({
 
   const svg = render(posterSpecFromRow(row));
 
-  return (
-    <div className="flex flex-1 items-center justify-center p-8">
-      <div className="w-full max-w-[640px]" dangerouslySetInnerHTML={{ __html: svg }} />
-      {/* Temporary: replaced by the real download UI in stage 6 */}
-      <div>
-        <a href={`/p/${code}/download/svg`} download>
-          SVG
-        </a>
-        <a href={`/p/${code}/download/png`} download>
-          PNG
-        </a>
-      </div>
-    </div>
-  );
+  return <PosterDisplay svg={svg} code={code} phrase={row.phrase} />;
 }
