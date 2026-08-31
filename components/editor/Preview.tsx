@@ -34,5 +34,5 @@ export function Preview({ spec, initialSvg }: PreviewProps) {
     }
   }, [spec, renderFn]);
 
-  return <div className="w-full max-w-[540px]" dangerouslySetInnerHTML={{ __html: svg }} />;
+  return <div className="emq-editor-preview-slot" dangerouslySetInnerHTML={{ __html: svg }} />;
 }

@@ -17,9 +17,5 @@ export default async function Page({
   const spec = searchParamsToSpec(urlParams);
   const initialSvg = render(spec);
 
-  return (
-    <div className="flex flex-1 items-start justify-center gap-8 p-8">
-      <Editor initialSpec={spec} initialSvg={initialSvg} />
-    </div>
-  );
+  return <Editor initialSpec={spec} initialSvg={initialSvg} />;
 }

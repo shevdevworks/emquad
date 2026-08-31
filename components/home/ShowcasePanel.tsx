@@ -13,6 +13,9 @@ export const ACCENT_CANDIDATES = ['#E8E4D9', '#00E5A0', '#FFD400', '#C4462F', '#
 export const FRAME_VALUES = ['none', 'hairline', 'glass'] as const;
 export type Frame = (typeof FRAME_VALUES)[number];
 
+export const CARD_ALIGN_VALUES = ['left', 'center'] as const;
+export type CardAlign = (typeof CARD_ALIGN_VALUES)[number];
+
 type LayerKey = 'photo' | 'vignette' | 'light' | 'grain';
 type ThreeStep = 0 | 1 | 2;
 
@@ -29,6 +32,10 @@ export interface ShowcasePanelProps {
   readonly onPhraseAccentChange: (on: boolean) => void;
   readonly frame: Frame;
   readonly onFrameChange: (frame: Frame) => void;
+  readonly glassFillPercent: number;
+  readonly onGlassFillPercentChange: (percent: number) => void;
+  readonly cardAlign: CardAlign;
+  readonly onCardAlignChange: (align: CardAlign) => void;
 }
 
 const LAYER_LABELS: Record<LayerKey, string> = {
@@ -51,6 +58,10 @@ export function ShowcasePanel({
   onPhraseAccentChange,
   frame,
   onFrameChange,
+  glassFillPercent,
+  onGlassFillPercentChange,
+  cardAlign,
+  onCardAlignChange,
 }: ShowcasePanelProps) {
   return (
     <div className="fixed bottom-8 left-8 z-50 w-64 rounded border border-white/15 bg-black/70 p-3 font-mono text-[11px] text-white/80 backdrop-blur-sm">
@@ -109,6 +120,39 @@ export function ShowcasePanel({
           {FRAME_VALUES.map((value) => (
             <label key={value} className="flex items-center gap-1">
               <input type="radio" name="frame" checked={frame === value} onChange={() => onFrameChange(value)} />
+              {value}
+            </label>
+          ))}
+        </div>
+      </div>
+
+      <div className="mb-2">
+        <div className="text-white/50">glass fill (editor only)</div>
+        <div className="flex items-center gap-2">
+          <input
+            type="range"
+            min={4}
+            max={70}
+            step={2}
+            value={glassFillPercent}
+            onChange={(e) => onGlassFillPercentChange(Number(e.target.value))}
+            className="flex-1"
+          />
+          <span className="w-9 text-right">{glassFillPercent}%</span>
+        </div>
+      </div>
+
+      <div className="mb-2">
+        <div className="text-white/50">card align</div>
+        <div className="flex gap-2">
+          {CARD_ALIGN_VALUES.map((value) => (
+            <label key={value} className="flex items-center gap-1">
+              <input
+                type="radio"
+                name="card-align"
+                checked={cardAlign === value}
+                onChange={() => onCardAlignChange(value)}
+              />
               {value}
             </label>
           ))}

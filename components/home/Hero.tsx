@@ -3,7 +3,7 @@
 import { TEXT_MUTED, TEXT_PRIMARY, useShowcase } from '@/components/global/GlobalChrome';
 
 export function Hero() {
-  const { accentColor, phraseAccentOn } = useShowcase();
+  const { accentColor, phraseAccentOn, cardAlign } = useShowcase();
 
   return (
     <div className="flex flex-1 flex-col items-center gap-10 lg:flex-row lg:items-center lg:justify-between lg:gap-[72px] lg:pr-6">
@@ -22,7 +22,7 @@ export function Hero() {
           container-type: inline-size;
           display: flex;
           flex-direction: column;
-          justify-content: flex-end;
+          justify-content: center;
           transition: transform 500ms cubic-bezier(0.22, 1, 0.36, 1),
             border-color 500ms cubic-bezier(0.22, 1, 0.36, 1),
             box-shadow 500ms cubic-bezier(0.22, 1, 0.36, 1);
@@ -154,6 +154,7 @@ export function Hero() {
               fontSize: 'clamp(40px, 15.5cqi, 104px)',
               lineHeight: 0.95,
               letterSpacing: '-0.02em',
+              textAlign: cardAlign,
               color: phraseAccentOn ? accentColor : TEXT_PRIMARY,
             }}
           >

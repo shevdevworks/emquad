@@ -3,7 +3,7 @@
 import { createContext, useContext, useEffect, useState, useSyncExternalStore } from 'react';
 import type { ReactNode } from 'react';
 import { ACCENT_CANDIDATES, ShowcasePanel } from '@/components/home/ShowcasePanel';
-import type { Frame } from '@/components/home/ShowcasePanel';
+import type { CardAlign, Frame } from '@/components/home/ShowcasePanel';
 
 type ThreeStep = 0 | 1 | 2;
 
@@ -34,6 +34,9 @@ interface ShowcaseState {
   readonly accentColor: string;
   readonly phraseAccentOn: boolean;
   readonly frame: Frame;
+  /** Editor-only glass fill opacity (0-1). Never read by .emq-glass. */
+  readonly glassFill: number;
+  readonly cardAlign: CardAlign;
 }
 
 const ShowcaseContext = createContext<ShowcaseState | null>(null);
@@ -63,6 +66,8 @@ export function GlobalChrome({ mode, children }: GlobalChromeProps) {
   const [accentColor, setAccentColor] = useState<string>(ACCENT_CANDIDATES[0]);
   const [phraseAccentOn, setPhraseAccentOn] = useState(false);
   const [frame, setFrame] = useState<Frame>('glass');
+  const [glassFillPercent, setGlassFillPercent] = useState(4);
+  const [cardAlign, setCardAlign] = useState<CardAlign>('left');
   const [panelVisible, setPanelVisible] = useState(false);
   const reducedMotion = useSyncExternalStore(
     subscribeReducedMotion,
@@ -106,7 +111,9 @@ export function GlobalChrome({ mode, children }: GlobalChromeProps) {
       : 'static z-20 flex flex-col box-border p-8 min-h-dvh emq-content-shell';
 
   return (
-    <ShowcaseContext.Provider value={{ accentColor, phraseAccentOn, frame }}>
+    <ShowcaseContext.Provider
+      value={{ accentColor, phraseAccentOn, frame, glassFill: glassFillPercent / 100, cardAlign }}
+    >
       <div className={pageShellClass}>
         <div className={heroRootClass}>
           <style>{`
@@ -229,6 +236,10 @@ export function GlobalChrome({ mode, children }: GlobalChromeProps) {
               onPhraseAccentChange={setPhraseAccentOn}
               frame={frame}
               onFrameChange={setFrame}
+              glassFillPercent={glassFillPercent}
+              onGlassFillPercentChange={setGlassFillPercent}
+              cardAlign={cardAlign}
+              onCardAlignChange={setCardAlign}
             />
           )}
         </div>
