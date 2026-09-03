@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useRef, useState } from 'react';
 import { TEXT_MUTED, TEXT_PRIMARY, useShowcase } from '@/components/global/GlobalChrome';
 
 export interface PosterDisplayProps {
@@ -19,6 +20,29 @@ const actionTextStyle = {
 
 export function PosterDisplay({ svg, code, phrase }: PosterDisplayProps) {
   const { accentColor, frame } = useShowcase();
+  const [shareLabel, setShareLabel] = useState<'SHARE' | 'LINK COPIED'>('SHARE');
+  const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (resetTimer.current) clearTimeout(resetTimer.current);
+  }, []);
+
+  async function handleShare() {
+    const url = window.location.href;
+    try {
+      if (navigator.share) {
+        await navigator.share({ title: phrase, url });
+        return;
+      }
+      await navigator.clipboard.writeText(url);
+      setShareLabel('LINK COPIED');
+      if (resetTimer.current) clearTimeout(resetTimer.current);
+      resetTimer.current = setTimeout(() => setShareLabel('SHARE'), 2000);
+    } catch (err) {
+      if (err instanceof DOMException && err.name === 'AbortError') return;
+      console.error(err);
+    }
+  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col items-center gap-6 emq-poster-column">
@@ -69,6 +93,8 @@ export function PosterDisplay({ svg, code, phrase }: PosterDisplayProps) {
           flex: 0 0 auto;
           display: flex;
           gap: 12px;
+          flex-wrap: wrap;
+          justify-content: center;
         }
 
         @media (max-width: 1023px) {
@@ -121,6 +147,14 @@ export function PosterDisplay({ svg, code, phrase }: PosterDisplayProps) {
         >
           PNG
         </a>
+        <button
+          type="button"
+          onClick={handleShare}
+          className="emq-glass inline-flex items-center justify-center px-6 py-3 transition-opacity hover:opacity-90"
+          style={{ ...actionTextStyle, minWidth: '143px' }}
+        >
+          {shareLabel}
+        </button>
         <a
           href="/create"
           className="inline-flex items-center justify-center px-6 py-3 transition-opacity hover:opacity-90"
