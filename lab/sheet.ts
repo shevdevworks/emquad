@@ -3,8 +3,8 @@ export interface SheetCard {
   readonly svg: string;
   readonly shortCaption: string;
   readonly fullCaption: string;
-  readonly inkTopPercent: number;
-  readonly inkBottomPercent: number;
+  readonly inkTopPercent?: number;
+  readonly inkBottomPercent?: number;
 }
 
 export interface SheetGroup {
@@ -28,6 +28,7 @@ function escapeHtml(text: string): string {
 }
 
 function renderGuides(card: SheetCard): string {
+  if (card.inkTopPercent === undefined || card.inkBottomPercent === undefined) return '';
   return (
     `<div class="guide-line" style="top:${card.inkTopPercent}%"></div>` +
     `<div class="guide-line" style="top:${card.inkBottomPercent}%"></div>`

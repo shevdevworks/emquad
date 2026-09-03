@@ -151,6 +151,7 @@ const hashes: Record<string, string> = {};
 const columnBaseScales = new Map<string, number>();
 const columnShrinkCases: { id: string; measureActualPx: number; measureDesignPx: number }[] = [];
 const ringThetaTops = new Map<string, number>();
+const ringCardExtras = new Map<string, { fsTop: number; bandWidthRatio: number }>();
 let exactFailures = 0;
 let toleranceViolations = 0;
 
@@ -337,6 +338,7 @@ for (const labCase of selectedCases) {
     const fsExact = checkRingBottomFsExact(spans);
     const thetaTopDeg = measureRingThetaTop(spans, rTop);
     ringThetaTops.set(labCase.id, thetaTopDeg);
+    ringCardExtras.set(labCase.id, { fsTop, bandWidthRatio: bandWidth.ratio });
 
     const allGaps = [...measureRingLetterGaps(spans, 'top', rTop), ...measureRingLetterGaps(spans, 'bottom', rInner)];
     const gapMinDeg = allGaps.length > 0 ? Math.min(...allGaps) : 0;
@@ -472,6 +474,31 @@ if (!filter) {
     inkBottomPercent: r.inkBottomPercent,
   });
 
+  // Ring cards skip inkTopPercent/inkBottomPercent: the glyph-ink parser
+  // never matches ring's glyph transform, so those fields would read as
+  // 0%/100% and paint guide-lines pinned to the card edges - noise, not
+  // signal. Caption carries fsTop/band-width ratio instead, already
+  // computed per-case in the main loop (ringCardExtras).
+  const toRingCard = (r: CaseResult): SheetCard => {
+    const extras = ringCardExtras.get(r.id);
+    const metrics = extras ? ` fsTop=${extras.fsTop.toFixed(2)} band=${extras.bandWidthRatio.toFixed(3)}` : '';
+    return {
+      id: r.id,
+      svg: r.svg,
+      shortCaption: `${r.density}${metrics}`,
+      fullCaption: r.fullCaption,
+    };
+  };
+
+  function findResult(id: string): CaseResult {
+    const r = results.find((x) => x.id === id);
+    if (!r) throw new Error(`ring group: case "${id}" not found`);
+    return r;
+  }
+
+  const ringCard = (id: string): SheetCard => toRingCard(findResult(id));
+  const gridCardById = (id: string): SheetCard => toCard(findResult(id));
+
   const geometryResults = results.filter((r) => r.id.startsWith('geometry-'));
   const phraseOrder: string[] = [];
   const byPhrase = new Map<string, CaseResult[]>();
@@ -533,6 +560,48 @@ if (!filter) {
   }));
   const gridAccentResults = results.filter((r) => r.id.startsWith('grid-') && r.id.includes('accent'));
 
+  const ringDensityGroup: SheetGroup = {
+    title: 'Ring — density',
+    cards: ['ring-density-tight', 'ring-density-regular', 'ring-density-airy'].map(ringCard),
+  };
+
+  const ringBottomArcGroup: SheetGroup = {
+    title: 'Ring — bottom arc',
+    cards: [
+      'ring-accent-first',
+      'ring-accent-middle',
+      'ring-accent-last-seven',
+      'ring-seven-words-no-accent',
+    ].map(ringCard),
+  };
+
+  const ringVarietyGroup: SheetGroup = {
+    title: 'Ring — variety',
+    cards: [
+      'ring-three-short-words',
+      'ring-cyrillic',
+      'ring-seed-100',
+      'ring-seed-500',
+      'ring-invert',
+    ].map(ringCard),
+  };
+
+  const ringVsGridSilhouetteGroup: SheetGroup = {
+    title: 'Ring vs Grid — silhouette',
+    cards: [
+      ringCard('ring-density-regular'),
+      gridCardById('grid-accent-knockout-first'),
+      ringCard('ring-seven-words-no-accent'),
+      gridCardById('grid-accent-knockout-last'),
+    ],
+    fixedCellWidthPx: 280,
+  };
+
+  const ringBandWidthViolationsGroup: SheetGroup = {
+    title: 'Ring — band width violations',
+    cards: ['ring-density-airy', 'ring-accent-last-seven'].map(ringCard),
+  };
+
   const groups: SheetGroup[] = [
     ...phraseGroups,
     { title: 'Dust', cards: grainResults.map(toCard) },
@@ -543,6 +612,11 @@ if (!filter) {
     { title: 'Break — accent', cards: breakAccentResults.map(toCard) },
     ...gridPhraseGroups,
     { title: 'Grid — accent', cards: gridAccentResults.map(toCard) },
+    ringDensityGroup,
+    ringBottomArcGroup,
+    ringVarietyGroup,
+    ringVsGridSilhouetteGroup,
+    ringBandWidthViolationsGroup,
   ];
 
   const BEFORE_AFTER_IDS: readonly string[] = [
