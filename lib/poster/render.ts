@@ -14,6 +14,11 @@ const PALETTE = {
 
 export const ACCENT_COLOR = PALETTE.accent;
 
+/** The poster's paper (background) color for a given spec, honoring invert. */
+export function paperColorFor(spec: PosterSpec): string {
+  return spec.params.invert ? PALETTE.ink : PALETTE.paper;
+}
+
 export function render(spec: PosterSpec): string {
   if (
     spec.params.mode !== 'stack' &&
@@ -28,7 +33,7 @@ export function render(spec: PosterSpec): string {
   }
 
   const words = splitWords(spec.phrase);
-  const paperColor = spec.params.invert ? PALETTE.ink : PALETTE.paper;
+  const paperColor = paperColorFor(spec);
   const inkColor = spec.params.invert ? PALETTE.paper : PALETTE.ink;
 
   const background = `<rect width="${POSTER_WIDTH}" height="${POSTER_HEIGHT}" fill="${paperColor}"/>`;

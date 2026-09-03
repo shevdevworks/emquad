@@ -1,5 +1,5 @@
 import { ImageResponse } from 'next/og';
-import { render } from '@/lib/poster/render';
+import { render, paperColorFor } from '@/lib/poster/render';
 import { getPosterByCode, posterSpecFromRow } from '@/lib/db/queries';
 
 export const alt = 'Emquad poster';
@@ -17,7 +17,8 @@ export default async function Image({
     return new Response('Not Found', { status: 404 });
   }
 
-  const svg = render(posterSpecFromRow(row));
+  const spec = posterSpecFromRow(row);
+  const svg = render(spec);
   const svgDataUrl = `data:image/svg+xml;base64,${Buffer.from(svg, 'utf-8').toString('base64')}`;
 
   return new ImageResponse(
@@ -29,7 +30,7 @@ export default async function Image({
           height: '100%',
           alignItems: 'center',
           justifyContent: 'center',
-          backgroundColor: '#000000',
+          backgroundColor: paperColorFor(spec),
         }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}

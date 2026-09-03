@@ -289,9 +289,11 @@ export function Editor({ initialSpec, initialSvg }: EditorProps) {
               updateParams({ accent: e.target.value === '' ? null : Number(e.target.value) })
             }
           >
-            <option value="">None</option>
+            <option value="" style={{ backgroundColor: '#101214', color: TEXT_PRIMARY }}>
+              None
+            </option>
             {words.map((word, i) => (
-              <option key={i} value={i}>
+              <option key={i} value={i} style={{ backgroundColor: '#101214', color: TEXT_PRIMARY }}>
                 {word}
               </option>
             ))}

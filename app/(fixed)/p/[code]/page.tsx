@@ -14,8 +14,12 @@ export async function generateMetadata({
   if (!row) return {};
   return {
     title: row.phrase,
-    description: `A typographic poster: "${row.phrase}"`,
-    robots: { index: false, follow: false },
+    description: 'Built from letters, not templates.',
+    robots: { index: false, follow: true },
+    openGraph: {
+      url: `/p/${code}`,
+      type: 'website',
+    },
   };
 }
 
