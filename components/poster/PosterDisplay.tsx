@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { TEXT_MUTED, TEXT_PRIMARY, useShowcase } from '@/components/global/GlobalChrome';
 
 export interface PosterDisplayProps {
@@ -155,13 +156,13 @@ export function PosterDisplay({ svg, code, phrase }: PosterDisplayProps) {
         >
           {shareLabel}
         </button>
-        <a
+        <Link
           href="/create"
           className="inline-flex items-center justify-center px-6 py-3 transition-opacity hover:opacity-90"
           style={{ ...actionTextStyle, backgroundColor: accentColor, color: '#101214' }}
         >
           CREATE YOUR OWN
-        </a>
+        </Link>
       </div>
     </div>
   );

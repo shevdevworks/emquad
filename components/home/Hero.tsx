@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { TEXT_MUTED, TEXT_PRIMARY, useShowcase } from '@/components/global/GlobalChrome';
 
 export function Hero() {
@@ -85,7 +86,7 @@ export function Hero() {
         </p>
 
         <div className="flex gap-3">
-          <a
+          <Link
             href="/create"
             className="inline-flex items-center justify-center px-6 py-3 transition-opacity hover:opacity-90"
             style={{
@@ -99,7 +100,7 @@ export function Hero() {
             }}
           >
             START
-          </a>
+          </Link>
           {/* TODO: link to /gallery once the gallery page exists */}
           <span
             aria-disabled="true"

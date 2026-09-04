@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useEffect, useState, useSyncExternalStore } from 'react';
 import type { ReactNode } from 'react';
+import Link from 'next/link';
 import { ACCENT_CANDIDATES, ShowcasePanel } from '@/components/home/ShowcasePanel';
 import type { CardAlign, Frame } from '@/components/home/ShowcasePanel';
 
@@ -263,13 +264,13 @@ function SiteHeader() {
         >
           GALLERY
         </span>
-        <a
+        <Link
           href="/create"
           className="transition-opacity hover:opacity-70"
           style={{ color: TEXT_PRIMARY, fontFamily: 'Onest', fontWeight: 800, letterSpacing: '0.08em', fontSize: '13px' }}
         >
           CREATE
-        </a>
+        </Link>
       </div>
     </div>
   );
