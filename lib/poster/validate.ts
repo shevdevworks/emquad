@@ -8,6 +8,7 @@ import {
   MAX_WORDS,
   MIN_WORDS,
   MODES,
+  PARAMS_VERSION,
   type Density,
   type GrainLevel,
   type Mode,
@@ -84,6 +85,31 @@ export function toAccent(value: unknown): number | null {
 export function toSeed(value: unknown): number {
   const n = toNumber(value);
   return Number.isInteger(n) ? n : -1; // -1 always fails validateParams's range check, triggering fallback
+}
+
+// Shape a caller might send - nothing beyond "unknown" per field can be
+// trusted, since this is used by the Server Action, which is callable
+// directly, bypassing the editor.
+export interface RawPosterParams {
+  readonly v?: unknown;
+  readonly mode?: unknown;
+  readonly invert?: unknown;
+  readonly accent?: unknown;
+  readonly density?: unknown;
+  readonly grain?: unknown;
+  readonly seed?: unknown;
+}
+
+export function normalizeParams(raw: RawPosterParams): PosterParams {
+  return {
+    v: PARAMS_VERSION,
+    mode: toMode(raw.mode),
+    invert: toInvert(raw.invert),
+    accent: toAccent(raw.accent),
+    density: toDensity(raw.density),
+    grain: toGrain(raw.grain),
+    seed: toSeed(raw.seed),
+  };
 }
 
 export type ValidationIssue =

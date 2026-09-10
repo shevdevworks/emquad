@@ -2,46 +2,17 @@
 
 import { redirect } from 'next/navigation';
 import {
+  normalizeParams,
   normalizePhrase,
-  toAccent,
-  toDensity,
-  toGrain,
-  toInvert,
-  toMode,
-  toSeed,
   validatePosterSpec,
+  type RawPosterParams,
   type ValidationIssue,
 } from '@/lib/poster/validate';
 import { insertPoster } from '@/lib/db/queries';
-import { PARAMS_VERSION, type PosterParams } from '@/lib/poster/types';
 
 export type SavePosterResult =
   | { readonly ok: true; readonly code: string }
   | { readonly ok: false; readonly issues: readonly ValidationIssue[] };
-
-// Shape a caller might send - nothing beyond "unknown" per field can be
-// trusted, since this action is callable directly, bypassing the editor.
-export interface RawPosterParams {
-  readonly v?: unknown;
-  readonly mode?: unknown;
-  readonly invert?: unknown;
-  readonly accent?: unknown;
-  readonly density?: unknown;
-  readonly grain?: unknown;
-  readonly seed?: unknown;
-}
-
-function normalizeParams(raw: RawPosterParams): PosterParams {
-  return {
-    v: PARAMS_VERSION,
-    mode: toMode(raw.mode),
-    invert: toInvert(raw.invert),
-    accent: toAccent(raw.accent),
-    density: toDensity(raw.density),
-    grain: toGrain(raw.grain),
-    seed: toSeed(raw.seed),
-  };
-}
 
 export async function savePoster(phrase: string, params: RawPosterParams): Promise<SavePosterResult> {
   // Reject oversized/malformed input before the per-character normalization pass -

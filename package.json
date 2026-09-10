@@ -8,6 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "lab": "tsx lab/render-all.ts",
+    "gallery:check": "tsx seed/check.ts",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate"
   },
