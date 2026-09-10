@@ -9,6 +9,8 @@
     "lint": "eslint",
     "lab": "tsx lab/render-all.ts",
     "gallery:check": "tsx seed/check.ts",
+    "gallery:plan": "tsx seed/gallery-sync.ts",
+    "gallery:apply": "tsx seed/gallery-sync.ts --apply",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate"
   },

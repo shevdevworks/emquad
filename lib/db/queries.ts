@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { and, count, eq, inArray } from 'drizzle-orm';
 import { getDb } from './client';
 import { posters, type PosterRow } from './schema';
 import { generateCode } from '@/lib/code';
@@ -16,14 +16,18 @@ export function posterSpecFromRow(row: PosterRow): PosterSpec {
   return { phrase: row.phrase, params: row.params };
 }
 
-export async function insertPoster(spec: PosterSpec): Promise<PosterRow> {
+export async function insertPoster(
+  spec: PosterSpec,
+  options?: { readonly inGallery?: boolean },
+): Promise<PosterRow> {
   const db = getDb();
+  const inGallery = options?.inGallery ?? false;
   for (let attempt = 0; attempt < MAX_INSERT_ATTEMPTS; attempt++) {
     const code = generateCode();
     try {
       const [row] = await db
         .insert(posters)
-        .values({ phrase: spec.phrase, params: spec.params, code })
+        .values({ phrase: spec.phrase, params: spec.params, code, inGallery })
         .returning();
       return row;
     } catch (error) {
@@ -33,4 +37,25 @@ export async function insertPoster(spec: PosterSpec): Promise<PosterRow> {
     }
   }
   throw new Error('Unreachable');
+}
+
+export async function listGalleryPosters(): Promise<PosterRow[]> {
+  const db = getDb();
+  return db.select().from(posters).where(eq(posters.inGallery, true));
+}
+
+export async function countPosters(): Promise<number> {
+  const db = getDb();
+  const [row] = await db.select({ n: count() }).from(posters);
+  return row.n;
+}
+
+export async function deletePostersByCode(codes: readonly string[]): Promise<readonly string[]> {
+  const db = getDb();
+  if (codes.length === 0) return [];
+  const rows = await db
+    .delete(posters)
+    .where(and(inArray(posters.code, codes), eq(posters.inGallery, false)))
+    .returning({ code: posters.code });
+  return rows.map((r) => r.code);
 }
