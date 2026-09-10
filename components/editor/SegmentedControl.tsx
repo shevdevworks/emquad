@@ -1,6 +1,6 @@
 'use client';
 
-import { TEXT_MUTED, TEXT_PRIMARY, useShowcase } from '@/components/global/GlobalChrome';
+import { SITE_ACCENT, TEXT_MUTED, TEXT_PRIMARY } from '@/lib/theme';
 
 export interface SegmentedOption<T extends string> {
   readonly value: T;
@@ -24,8 +24,6 @@ export function SegmentedControl<T extends string>({
   letterSpacing = '0.18em',
   wrap = false,
 }: SegmentedControlProps<T>) {
-  const { accentColor } = useShowcase();
-
   return (
     <div
       role="radiogroup"
@@ -50,8 +48,8 @@ export function SegmentedControl<T extends string>({
               letterSpacing,
               textTransform: 'uppercase',
               color: active ? TEXT_PRIMARY : TEXT_MUTED,
-              background: active ? `color-mix(in srgb, ${accentColor} 18%, transparent)` : 'transparent',
-              border: `1px solid ${active ? accentColor : 'transparent'}`,
+              background: active ? `color-mix(in srgb, ${SITE_ACCENT} 18%, transparent)` : 'transparent',
+              border: `1px solid ${active ? SITE_ACCENT : 'transparent'}`,
             }}
           >
             {option.label}

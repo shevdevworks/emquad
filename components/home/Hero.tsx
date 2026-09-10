@@ -1,11 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { TEXT_MUTED, TEXT_PRIMARY, useShowcase } from '@/components/global/GlobalChrome';
+import { SITE_ACCENT, TEXT_MUTED, TEXT_PRIMARY } from '@/lib/theme';
 
 export function Hero() {
-  const { accentColor, phraseAccentOn, cardAlign } = useShowcase();
-
   return (
     <div className="flex flex-1 flex-col items-center gap-10 lg:flex-row lg:items-center lg:justify-between lg:gap-[72px] lg:pr-6">
       <style>{`
@@ -90,7 +88,7 @@ export function Hero() {
             href="/create"
             className="inline-flex items-center justify-center px-6 py-3 transition-opacity hover:opacity-90"
             style={{
-              backgroundColor: accentColor,
+              backgroundColor: SITE_ACCENT,
               color: '#101214',
               borderRadius: '8px',
               fontFamily: 'Onest',
@@ -146,7 +144,7 @@ export function Hero() {
 
       {/* '--accent' is a custom property, not a standard CSSProperties key - same
           pattern the removed MOTION layer used for '--drift-duration'. */}
-      <div className="emq-card-wrap shrink-0" style={{ ['--accent' as string]: accentColor }}>
+      <div className="emq-card-wrap shrink-0" style={{ ['--accent' as string]: SITE_ACCENT }}>
         <div className="emq-card emq-glass">
           <div
             style={{
@@ -155,8 +153,8 @@ export function Hero() {
               fontSize: 'clamp(40px, 15.5cqi, 104px)',
               lineHeight: 0.95,
               letterSpacing: '-0.02em',
-              textAlign: cardAlign,
-              color: phraseAccentOn ? accentColor : TEXT_PRIMARY,
+              textAlign: 'left',
+              color: TEXT_PRIMARY,
             }}
           >
             <div style={{ whiteSpace: 'nowrap' }}>A PHRASE</div>

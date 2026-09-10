@@ -5,6 +5,7 @@
 :root {
   --background: #000000;
   --foreground: #f2f5f7;
+  --glass-fill: 0.04;
 }
 
 @theme inline {
@@ -19,7 +20,7 @@ body {
 }
 
 .emq-glass {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255, 255, 255, var(--glass-fill));
   border: 1px solid rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);

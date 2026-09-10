@@ -1,11 +1,9 @@
 'use client';
 
 import Link from 'next/link';
-import { TEXT_MUTED, TEXT_PRIMARY, useShowcase } from '@/components/global/GlobalChrome';
+import { SITE_ACCENT, TEXT_MUTED, TEXT_PRIMARY } from '@/lib/theme';
 
 export default function NotFound() {
-  const { accentColor } = useShowcase();
-
   return (
     <div className="flex flex-1 flex-col items-center justify-center gap-5 text-center">
       <div
@@ -50,7 +48,7 @@ export default function NotFound() {
         href="/create"
         className="inline-flex items-center justify-center px-6 py-3 transition-opacity hover:opacity-90"
         style={{
-          backgroundColor: accentColor,
+          backgroundColor: SITE_ACCENT,
           color: '#101214',
           borderRadius: '8px',
           fontFamily: 'Onest',

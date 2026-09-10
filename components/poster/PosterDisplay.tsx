@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { TEXT_MUTED, TEXT_PRIMARY, useShowcase } from '@/components/global/GlobalChrome';
+import { SITE_ACCENT, TEXT_MUTED, TEXT_PRIMARY } from '@/lib/theme';
 
 export interface PosterDisplayProps {
   readonly svg: string;
@@ -20,7 +20,6 @@ const actionTextStyle = {
 } as const;
 
 export function PosterDisplay({ svg, code, phrase }: PosterDisplayProps) {
-  const { accentColor, frame } = useShowcase();
   const [shareLabel, setShareLabel] = useState<'SHARE' | 'LINK COPIED'>('SHARE');
   const resetTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -60,14 +59,6 @@ export function PosterDisplay({ svg, code, phrase }: PosterDisplayProps) {
           min-height: 0;
           max-width: 100%;
         }
-        .emq-poster-slot--none,
-        .emq-poster-slot--hairline {
-          aspect-ratio: 0.8;
-        }
-        .emq-poster-slot--hairline {
-          box-sizing: border-box;
-          border: 1px solid rgba(255, 255, 255, 0.10);
-        }
         .emq-poster-slot--glass {
           box-sizing: border-box;
           display: flex;
@@ -75,7 +66,7 @@ export function PosterDisplay({ svg, code, phrase }: PosterDisplayProps) {
           align-self: center;
           padding: 24px;
           border-radius: 16px;
-          background: rgba(255, 255, 255, 0.04);
+          background: rgba(255, 255, 255, var(--glass-fill));
           border: 1px solid rgba(255, 255, 255, 0.10);
           backdrop-filter: blur(12px);
           -webkit-backdrop-filter: blur(12px);
@@ -120,16 +111,9 @@ export function PosterDisplay({ svg, code, phrase }: PosterDisplayProps) {
         {phrase}
       </div>
 
-      {frame === 'glass' ? (
-        <div className="emq-poster-slot emq-poster-slot--glass">
-          <div className="emq-poster-inner" dangerouslySetInnerHTML={{ __html: svg }} />
-        </div>
-      ) : (
-        <div
-          className={`emq-poster-slot ${frame === 'hairline' ? 'emq-poster-slot--hairline' : 'emq-poster-slot--none'}`}
-          dangerouslySetInnerHTML={{ __html: svg }}
-        />
-      )}
+      <div className="emq-poster-slot emq-poster-slot--glass">
+        <div className="emq-poster-inner" dangerouslySetInnerHTML={{ __html: svg }} />
+      </div>
 
       <div className="emq-poster-actions">
         <a
@@ -159,7 +143,7 @@ export function PosterDisplay({ svg, code, phrase }: PosterDisplayProps) {
         <Link
           href="/create"
           className="inline-flex items-center justify-center px-6 py-3 transition-opacity hover:opacity-90"
-          style={{ ...actionTextStyle, backgroundColor: accentColor, color: '#101214' }}
+          style={{ ...actionTextStyle, backgroundColor: SITE_ACCENT, color: '#101214' }}
         >
           CREATE YOUR OWN
         </Link>

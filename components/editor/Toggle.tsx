@@ -1,6 +1,6 @@
 'use client';
 
-import { useShowcase } from '@/components/global/GlobalChrome';
+import { SITE_ACCENT } from '@/lib/theme';
 
 export interface ToggleProps {
   readonly checked: boolean;
@@ -8,8 +8,6 @@ export interface ToggleProps {
 }
 
 export function Toggle({ checked, onChange }: ToggleProps) {
-  const { accentColor } = useShowcase();
-
   return (
     <button
       type="button"
@@ -17,14 +15,14 @@ export function Toggle({ checked, onChange }: ToggleProps) {
       aria-checked={checked}
       onClick={() => onChange(!checked)}
       className="emq-editor-glass relative h-6 w-11 shrink-0 rounded-full transition-colors"
-      style={{ borderColor: checked ? accentColor : undefined }}
+      style={{ borderColor: checked ? SITE_ACCENT : undefined }}
     >
       <span
         className="absolute top-0.5 h-4 w-4 rounded-full transition-transform"
         style={{
           left: '2px',
           transform: checked ? 'translateX(20px)' : 'translateX(0)',
-          background: checked ? accentColor : '#8A9299',
+          background: checked ? SITE_ACCENT : '#8A9299',
         }}
       />
     </button>

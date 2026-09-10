@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { savePoster } from '@/actions/save-poster';
-import { TEXT_MUTED, TEXT_PRIMARY, useShowcase } from '@/components/global/GlobalChrome';
+import { SITE_ACCENT, TEXT_MUTED, TEXT_PRIMARY } from '@/lib/theme';
 import {
   AVAILABLE_MODES,
   DENSITIES,
@@ -90,7 +90,6 @@ function describeIssue(issue: ValidationIssue): string {
 }
 
 export function Editor({ initialSpec, initialSvg }: EditorProps) {
-  const { accentColor, glassFill } = useShowcase();
   const [spec, setSpec] = useState<PosterSpec>(initialSpec);
   const [saveIssues, setSaveIssues] = useState<readonly ValidationIssue[]>([]);
   const [isSaving, setIsSaving] = useState(false);
@@ -155,13 +154,10 @@ export function Editor({ initialSpec, initialSvg }: EditorProps) {
   const displayedIssues = liveIssues.length > 0 ? liveIssues : saveIssues;
 
   return (
-    <div
-      className="emq-editor-row flex w-full flex-1"
-      style={{ gap: '72px', ['--emq-glass-fill' as string]: glassFill }}
-    >
+    <div className="emq-editor-row flex w-full flex-1" style={{ gap: '72px' }}>
       <style>{`
         .emq-editor-glass {
-          background: rgba(255, 255, 255, var(--emq-glass-fill, 0.04));
+          background: rgba(255, 255, 255, var(--glass-fill));
           border: 1px solid rgba(255, 255, 255, 0.10);
           backdrop-filter: blur(12px);
           -webkit-backdrop-filter: blur(12px);
@@ -314,7 +310,7 @@ export function Editor({ initialSpec, initialSvg }: EditorProps) {
             type="button"
             disabled={isSaving}
             className="flex-1 rounded-lg px-4 py-2.5 transition-opacity hover:opacity-90 disabled:opacity-50"
-            style={{ ...BUTTON_TEXT_STYLE, backgroundColor: accentColor, color: '#101214' }}
+            style={{ ...BUTTON_TEXT_STYLE, backgroundColor: SITE_ACCENT, color: '#101214' }}
             onClick={() => void handleSave()}
           >
             Save
