@@ -1,4 +1,4 @@
-import { and, count, eq, inArray } from 'drizzle-orm';
+import { and, count, eq, gt, inArray } from 'drizzle-orm';
 import { getDb } from './client';
 import { posters, type PosterRow } from './schema';
 import { generateCode } from '@/lib/code';
@@ -37,6 +37,38 @@ export async function insertPoster(
     }
   }
   throw new Error('Unreachable');
+}
+
+const DUPLICATE_WINDOW_MS = 60_000;
+
+/**
+ * Finds a poster saved moments ago from the same phrase and the same
+ * parameters, so a repeated click or a retried request returns the existing
+ * link instead of writing a second identical row.
+ *
+ * Gallery rows are excluded deliberately: without that condition someone who
+ * happened to rebuild a gallery poster keystroke for keystroke would be sent
+ * to the curated gallery link rather than to a poster of their own.
+ *
+ * Parameters are compared as jsonb by Postgres, which ignores key order and
+ * whitespace, so no second spec-comparison helper is needed here.
+ */
+export async function findRecentDuplicate(spec: PosterSpec): Promise<PosterRow | null> {
+  const db = getDb();
+  const since = new Date(Date.now() - DUPLICATE_WINDOW_MS);
+  const rows = await db
+    .select()
+    .from(posters)
+    .where(
+      and(
+        eq(posters.phrase, spec.phrase),
+        eq(posters.params, spec.params),
+        eq(posters.inGallery, false),
+        gt(posters.createdAt, since),
+      ),
+    )
+    .limit(1);
+  return rows[0] ?? null;
 }
 
 export async function listGalleryPosters(): Promise<PosterRow[]> {

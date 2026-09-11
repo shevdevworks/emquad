@@ -16,7 +16,7 @@ import {
   type PosterParams,
   type PosterSpec,
 } from '@/lib/poster/types';
-import { specToSearchParams } from '@/lib/poster/url';
+import { searchParamsToSpec, specToSearchParams } from '@/lib/poster/url';
 import {
   splitWords,
   validateParams,
@@ -43,6 +43,8 @@ const DEBOUNCE_MS = 300;
 // frame, not a fixed color. The dark backing below (not a color change)
 // pulls the effective background near-black, raising contrast to ~6.9:1.
 const ERROR_COLOR = '#FF6B5B';
+
+const RATE_LIMIT_MESSAGE = 'Too many saves in a row. Wait a minute and try again.';
 
 const GROUP_LABEL_STYLE = {
   fontFamily: 'Onest',
@@ -73,6 +75,18 @@ function writeUrl(spec: PosterSpec) {
   window.history.replaceState(null, '', qs ? `/create?${qs}` : '/create');
 }
 
+// Returning from a saved poster with the back button restores the address
+// writeUrl left behind, but remounts the editor with whichever server payload
+// the Router Cache holds for /create - usually the one rendered for the bare
+// entry, whose spec is the default. Measured: address
+// /create?phrase=BACK+BUTTON+TEST+PHRASE, textarea "the poster starts here".
+// The address is the reliable half, so it wins on mount. Reading it costs no
+// network request, unlike the router.replace this project rejected in 6.4.
+function specFromAddress(serverSpec: PosterSpec): PosterSpec {
+  if (typeof window === 'undefined') return serverSpec;
+  return searchParamsToSpec(new URLSearchParams(window.location.search));
+}
+
 // Plain-English copy for every ValidationIssue lib/poster/validate.ts can
 // produce. validate.ts itself only returns {field, code} pairs - this is
 // the sole place that turns them into text, so lib/poster stays free of UI copy.
@@ -90,16 +104,19 @@ function describeIssue(issue: ValidationIssue): string {
 }
 
 export function Editor({ initialSpec, initialSvg }: EditorProps) {
-  const [spec, setSpec] = useState<PosterSpec>(initialSpec);
-  const [saveIssues, setSaveIssues] = useState<readonly ValidationIssue[]>([]);
+  const [spec, setSpec] = useState<PosterSpec>(() => specFromAddress(initialSpec));
+  const [saveMessages, setSaveMessages] = useState<readonly string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
   // Ref, not a boolean flag: React Strict Mode double-invokes the mount
   // effect in dev, and a flip-once boolean does not survive that second
   // call. Comparing against the original spec value does, since it stays
   // true on every mount-time invocation and only turns false once `spec`
-  // has actually been replaced by a real edit.
-  const initialSpecRef = useRef(initialSpec);
+  // has actually been replaced by a real edit. It has to hold the value the
+  // state actually started from, not the `initialSpec` prop, or the two
+  // differ by identity after a back navigation and the editor rewrites the
+  // address before the first edit.
+  const initialSpecRef = useRef(spec);
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const savingRef = useRef(false);
 
@@ -132,11 +149,13 @@ export function Editor({ initialSpec, initialSvg }: EditorProps) {
 
     clearTimeout(debounceTimer.current);
     writeUrl(spec);
-    setSaveIssues([]);
+    setSaveMessages([]);
     setIsSaving(true);
     const result = await savePoster(spec.phrase, spec.params);
     if (!result.ok) {
-      setSaveIssues(result.issues);
+      setSaveMessages(
+        result.reason === 'rate_limited' ? [RATE_LIMIT_MESSAGE] : result.issues.map(describeIssue),
+      );
       setIsSaving(false);
       savingRef.current = false;
     }
@@ -151,7 +170,8 @@ export function Editor({ initialSpec, initialSvg }: EditorProps) {
     ...(paramsResult.ok ? [] : paramsResult.issues),
   ];
   const validSpec = liveIssues.length === 0 ? spec : null;
-  const displayedIssues = liveIssues.length > 0 ? liveIssues : saveIssues;
+  const displayedMessages =
+    liveIssues.length > 0 ? liveIssues.map(describeIssue) : saveMessages;
 
   return (
     <div className="emq-editor-row flex w-full flex-1" style={{ gap: '72px' }}>
@@ -317,13 +337,13 @@ export function Editor({ initialSpec, initialSvg }: EditorProps) {
           </button>
         </div>
 
-        {displayedIssues.length > 0 && (
+        {displayedMessages.length > 0 && (
           <ul
             className="emq-editor-error-backing flex flex-col gap-1 px-3 py-2"
             style={{ fontFamily: 'Onest', fontWeight: 500, fontSize: '12px', color: ERROR_COLOR }}
           >
-            {displayedIssues.map((issue, i) => (
-              <li key={i}>{describeIssue(issue)}</li>
+            {displayedMessages.map((message, i) => (
+              <li key={i}>{message}</li>
             ))}
           </ul>
         )}
