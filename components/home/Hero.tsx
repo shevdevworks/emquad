@@ -99,10 +99,9 @@ export function Hero() {
           >
             START
           </Link>
-          {/* TODO: link to /gallery once the gallery page exists */}
-          <span
-            aria-disabled="true"
-            className="emq-glass inline-flex cursor-default items-center justify-center px-6 py-3"
+          <Link
+            href="/gallery"
+            className="emq-glass inline-flex items-center justify-center px-6 py-3 transition-opacity hover:opacity-90"
             style={{
               color: TEXT_PRIMARY,
               borderRadius: '8px',
@@ -113,7 +112,7 @@ export function Hero() {
             }}
           >
             GALLERY
-          </span>
+          </Link>
         </div>
 
         <div className="flex gap-8 pt-2">

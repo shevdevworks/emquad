@@ -3,7 +3,7 @@
 import { useSyncExternalStore } from 'react';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
-import { SITE_ACCENT, TEXT_MUTED, TEXT_PRIMARY } from '@/lib/theme';
+import { SITE_ACCENT, TEXT_PRIMARY } from '@/lib/theme';
 
 const PHOTO_OPACITY = 0.6;
 const GRAIN_OPACITY = 0.07;
@@ -158,12 +158,13 @@ function SiteHeader() {
         EMQUAD
       </span>
       <div className="flex items-center gap-6">
-        <span
-          className="cursor-default"
-          style={{ color: TEXT_MUTED, fontFamily: 'Onest', fontWeight: 800, letterSpacing: '0.08em', fontSize: '13px' }}
+        <Link
+          href="/gallery"
+          className="transition-opacity hover:opacity-70"
+          style={{ color: TEXT_PRIMARY, fontFamily: 'Onest', fontWeight: 800, letterSpacing: '0.08em', fontSize: '13px' }}
         >
           GALLERY
-        </span>
+        </Link>
         <Link
           href="/create"
           className="transition-opacity hover:opacity-70"
