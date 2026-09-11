@@ -493,22 +493,60 @@ export function checkGridInkBand(rows: readonly RowSpan[], cell: number, padding
   return { ok: minClearancePx >= padding - 0.5, minClearancePx };
 }
 
-export interface GridAntiStackResult {
+export interface GridRaggedRowsResult {
   readonly ok: boolean;
-  readonly narrowRowCount: number;
+  readonly spreadPx: number;
+  readonly widestPx: number;
+  readonly narrowestPx: number;
   readonly totalRows: number;
 }
 
 /**
- * Distinguishes Grid from Stack: at least half of Grid's rows must stay
- * narrower than 0.75 of canvas width, since Grid rows are module-bound, not
- * width-filling like Stack's.
+ * Distinguishes Grid from Stack (stage 8.3, debt 48 - replaces
+ * checkGridAntiStack).
+ *
+ * The old check asked that half of Grid's rows stay narrower than 0.75 of
+ * canvas width. That measured the wrong thing and fought the mode's own
+ * constants: airy caps a word at maxSpan 2 of 4 modules, so two words fill
+ * the row edge to edge by construction, and all three airy cases sat exactly
+ * on the pass/fail boundary (1/2, 1/2, 1/4) - with an airy grid poster
+ * (BRING SNACKS OR STAY HOME) already live in the gallery.
+ *
+ * What actually separates the two modes is the right edge, not the width:
+ * Stack stretches every row to one shared measure, so its rows come out the
+ * same width; Grid snaps rows to modules and leaves them ragged. So the test
+ * is the spread between the widest and the narrowest row.
+ *
+ * The threshold comes from measuring both families rather than from a
+ * module step (a module step is 270px nominally, but painted ink never
+ * fills its module, so the ink-space difference of one module is not a
+ * fixed number). Measured across every case the lab renders: Stack spreads
+ * 0.00-0.02px across 21 multi-row cases - it is identically zero up to
+ * toFixed noise - while Grid spreads 77.75-703.33px across 23. One percent
+ * of canvas width (10.8px) sits ~540x above Stack's noise and ~7x below the
+ * flattest Grid in the set, so it is not pinned to any single case.
+ * A single-row poster has no spread to measure and passes.
  */
-export function checkGridAntiStack(rows: readonly RowSpan[], canvasWidth: number): GridAntiStackResult {
-  if (rows.length === 0) return { ok: true, narrowRowCount: 0, totalRows: 0 };
-  const threshold = 0.75 * canvasWidth;
-  const narrowRowCount = rows.filter((r) => r.maxX - r.minX <= threshold).length;
-  return { ok: narrowRowCount >= Math.ceil(rows.length / 2), narrowRowCount, totalRows: rows.length };
+export function checkGridRaggedRows(
+  rows: readonly RowSpan[],
+  canvasWidth: number,
+  minSpreadRatio = 0.01,
+): GridRaggedRowsResult {
+  if (rows.length < 2) {
+    const only = rows.length === 1 ? rows[0].maxX - rows[0].minX : 0;
+    return { ok: true, spreadPx: 0, widestPx: only, narrowestPx: only, totalRows: rows.length };
+  }
+  const widths = rows.map((r) => r.maxX - r.minX);
+  const widestPx = Math.max(...widths);
+  const narrowestPx = Math.min(...widths);
+  const spreadPx = widestPx - narrowestPx;
+  return {
+    ok: spreadPx >= minSpreadRatio * canvasWidth,
+    spreadPx,
+    widestPx,
+    narrowestPx,
+    totalRows: rows.length,
+  };
 }
 
 export interface GridAccentCorridorResult {
@@ -1086,14 +1124,31 @@ export function checkRingDiscGap(discR: number, inner: number, minGapPx = 40): {
   return { gapPx, ok: gapPx >= minGapPx };
 }
 
-/** Check 13b (tolerance): width of the ink band, as a fraction of OUTER. */
-export function checkRingInkBandWidth(
-  bandWidthPx: number,
-  minRatio = 0.12,
-  maxRatio = 0.3,
-): { ratio: number; ok: boolean } {
-  const ratio = bandWidthPx / RING_OUTER;
-  return { ratio, ok: ratio >= minRatio && ratio <= maxRatio };
+// Replaces checkRingInkBandWidth (stage 8.3, debts 48 and 51). That check
+// read "ink band width as a fraction of OUTER >= 0.12", but the band it was
+// given is computed as capHeight/1000 * fsTop by the caller, never measured
+// off the markup - so it was the top arc's font size in disguise, scaled by
+// two constants. As a floor it was unreachable by construction: airy pins
+// fsTop at FS_TO_OUTER.airy * OUTER = 0.14 * 486 = 68.04px, which lands the
+// ratio at 0.099, below a threshold no airy poster could ever clear - and
+// one such poster (LATE TRAINS AND GOOD FRIENDS) is in the live gallery,
+// accepted by eye. So the check now states what it actually measures: the
+// font size, in px, inside a corridor.
+//
+// Floor 55px: below ~0.81 of the airy nominal the arcs stop reading as a
+// ring of words, and it still sits well above ring.ts's own MIN_FS of 40,
+// where the mode throws. Shrink-to-fit legitimately lands under the nominal
+// (seven words with an accent solve to 79.17 against a regular nominal of
+// 97.20), so the floor has to leave room for it.
+// Ceiling 150px: just above the tight nominal of 136.08, to catch a
+// regression that inflates the kegl. The disc is guarded separately and on
+// real radii by checkRingDiscGap, so this corridor does not repeat it.
+export function checkRingFsCorridor(
+  fsTopPx: number,
+  minPx = 55,
+  maxPx = 150,
+): { fsTopPx: number; ok: boolean } {
+  return { fsTopPx, ok: fsTopPx >= minPx && fsTopPx <= maxPx };
 }
 
 // scale() is emitted via toFixed(6) (modes/ring.ts), so each of fsTop/fsBot
