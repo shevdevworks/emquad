@@ -5,12 +5,15 @@ import { orderGalleryRows } from '@/lib/gallery/order';
 import { GalleryWall } from '@/components/gallery/GalleryWall';
 import { GALLERY_URLS } from '@/seed/gallery';
 import { checkGalleryUrls } from '@/seed/gallery-specs';
+import { galleryJsonLd } from '@/lib/seo/gallery-seo';
+import { serializeJsonLd } from '@/lib/seo/poster-seo';
 
 export const dynamic = 'force-dynamic';
 
 export const metadata: Metadata = {
   title: 'Gallery — Emquad',
   description: 'Sixteen posters built from short phrases.',
+  alternates: { canonical: '/gallery' },
 };
 
 export default async function Page() {
@@ -28,5 +31,15 @@ export default async function Page() {
     svg: render(posterSpecFromRow(row)),
   }));
 
-  return <GalleryWall posters={posters} />;
+  const jsonLd = galleryJsonLd(posters);
+
+  return (
+    <>
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
+      />
+      <GalleryWall posters={posters} />
+    </>
+  );
 }
