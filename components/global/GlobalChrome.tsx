@@ -22,6 +22,25 @@ function getReducedMotionServerSnapshot(): boolean {
   return false;
 }
 
+// Below 1024px the content shell scrolls while the background layers stay
+// fixed, so the header is sticky there. Its backdrop is tied to this flag
+// rather than being always on: at rest there is nothing under the header to
+// cover, and a permanent dark strip would sit over the bare smoke.
+const HEADER_BACKDROP_AT_SCROLL_PX = 8;
+
+function subscribeScroll(callback: () => void) {
+  window.addEventListener('scroll', callback, { passive: true });
+  return () => window.removeEventListener('scroll', callback);
+}
+
+function getScrolledSnapshot(): boolean {
+  return window.scrollY > HEADER_BACKDROP_AT_SCROLL_PX;
+}
+
+function getScrolledServerSnapshot(): boolean {
+  return false;
+}
+
 export type ChromeMode = 'fixed' | 'flow';
 
 export interface GlobalChromeProps {
@@ -35,6 +54,7 @@ export function GlobalChrome({ mode, children }: GlobalChromeProps) {
     getReducedMotionSnapshot,
     getReducedMotionServerSnapshot,
   );
+  const scrolled = useSyncExternalStore(subscribeScroll, getScrolledSnapshot, getScrolledServerSnapshot);
 
   // fixed: one non-scrolling viewport-height screen (home, poster page).
   // flow: normal document flow that grows and scrolls (the editor, which is
@@ -83,6 +103,34 @@ export function GlobalChrome({ mode, children }: GlobalChromeProps) {
               padding: 32px;
               box-sizing: border-box;
               min-height: 100dvh;
+            }
+            .emq-site-header {
+              position: sticky;
+              top: 0;
+              z-index: 30;
+              /* Bleed over the shell's 32px side padding so the backdrop reaches
+                 the viewport edges; the matching padding puts the labels back
+                 exactly where they were. Vertical geometry is untouched. */
+              margin-inline: -32px;
+              padding-inline: 32px;
+            }
+            /* Backdrop as a pseudo-element, so the header keeps its own box and
+               the scrolling content below it is not pushed by a taller bar.
+               The top bleed covers the shell's 32px top padding while the header
+               is still travelling up to top: 0. */
+            .emq-site-header--scrolled::before {
+              content: '';
+              position: absolute;
+              inset: -32px 0 auto 0;
+              height: calc(100% + 56px);
+              background: linear-gradient(
+                to bottom,
+                #000 0%,
+                rgba(0, 0, 0, 0.92) 62%,
+                rgba(0, 0, 0, 0) 100%
+              );
+              z-index: -1;
+              pointer-events: none;
             }
           }
         `}</style>
@@ -141,7 +189,7 @@ export function GlobalChrome({ mode, children }: GlobalChromeProps) {
         </div>
 
         <div className={contentShellClass}>
-          <SiteHeader />
+          <SiteHeader scrolled={scrolled} />
           {children}
         </div>
       </div>
@@ -149,9 +197,17 @@ export function GlobalChrome({ mode, children }: GlobalChromeProps) {
   );
 }
 
-function SiteHeader() {
+interface SiteHeaderProps {
+  readonly scrolled: boolean;
+}
+
+function SiteHeader({ scrolled }: SiteHeaderProps) {
   return (
-    <div className="flex h-12 shrink-0 items-center justify-between">
+    <div
+      className={`emq-site-header flex h-12 shrink-0 items-center justify-between${
+        scrolled ? ' emq-site-header--scrolled' : ''
+      }`}
+    >
       <span
         style={{ color: TEXT_PRIMARY, fontFamily: 'Onest', fontWeight: 800, letterSpacing: '0.08em', fontSize: '13px' }}
       >
