@@ -4,7 +4,7 @@ import { listGalleryPosters, posterSpecFromRow } from '@/lib/db/queries';
 import { orderGalleryRows } from '@/lib/gallery/order';
 import { GalleryWall } from '@/components/gallery/GalleryWall';
 import { GALLERY_URLS } from '@/seed/gallery';
-import { checkGalleryUrls } from '@/seed/gallery-checks';
+import { checkGalleryUrls } from '@/seed/gallery-specs';
 
 export const dynamic = 'force-dynamic';
 

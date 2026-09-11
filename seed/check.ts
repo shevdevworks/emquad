@@ -10,7 +10,8 @@ import * as path from 'node:path';
 
 import { MODES, type PosterSpec } from '../lib/poster/types';
 import { render } from '../lib/poster/render';
-import { checkGalleryUrls, loadGalleryUrls, MAX_RECORDS } from './gallery-checks';
+import { checkGalleryUrls, MAX_RECORDS } from './gallery-specs';
+import { loadGalleryUrls } from './gallery-checks';
 
 function buildSheetHtml(specs: readonly PosterSpec[]): string {
   const total = specs.length;

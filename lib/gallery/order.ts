@@ -1,5 +1,5 @@
 import type { PosterSpec } from '../poster/types';
-import { specsDeepEqual } from '../../seed/gallery-checks';
+import { specsDeepEqual } from '../../seed/gallery-specs';
 
 export interface OrderableGalleryRow<T> {
   readonly spec: PosterSpec;

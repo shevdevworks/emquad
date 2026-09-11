@@ -19,7 +19,7 @@
  * checks below run". No function from it is called until after
  * checkGalleryUrls has passed.
  *
- * No checks here duplicate seed/gallery-checks.ts; no insert path here
+ * No checks here duplicate seed/gallery-specs.ts; no insert path here
  * bypasses insertPoster in lib/db/queries.ts.
  */
 import {
@@ -33,7 +33,8 @@ import {
 import type { PosterRow } from '../lib/db/schema';
 import { render } from '../lib/poster/render';
 import type { PosterSpec } from '../lib/poster/types';
-import { checkGalleryUrls, loadGalleryUrls, specsDeepEqual } from './gallery-checks';
+import { checkGalleryUrls, specsDeepEqual } from './gallery-specs';
+import { loadGalleryUrls } from './gallery-checks';
 import { parseSyncArgs } from './sync-args';
 
 const CODES_TO_DELETE: readonly string[] = [
