@@ -1,20 +1,6 @@
 import { POSTER_HEIGHT, POSTER_WIDTH, type Density, type GrainLevel } from '../types';
-import { glyphPath, measureInk, mulberry32, renderGrain, wordNaturalWidth, type InkMeasure } from '../primitives';
-import onestGlyphs from '../onest-glyphs.json';
-
-interface FontMetrics {
-  readonly unitsPerEm: number;
-  readonly capHeight: number;
-  readonly ascender: number;
-  readonly descender: number;
-  readonly advances: Readonly<Record<string, number>>;
-  readonly paths: Readonly<Record<string, string>>;
-}
-
-// Same widening as modes/stack.ts and modes/break.ts - see stack.ts for the
-// full explanation. Duplicated here on purpose: this mode does not import
-// from stack.ts or break.ts.
-const METRICS = onestGlyphs as unknown as Record<'500' | '800', FontMetrics>;
+import { measureInk, mulberry32, renderGlyphRun, renderGrain, wordNaturalWidth, type InkMeasure } from '../primitives';
+import { METRICS } from '../metrics';
 
 export const COLS = 4;
 export const CELL = POSTER_WIDTH / COLS;
@@ -361,16 +347,9 @@ export function renderGrid(input: RenderGridInput): string {
           // background, not the ink color, so the plate reads as a hole.
           const fill = word.index === accentIndex ? colors.paper : colors.ink;
 
-          const glyphParts: string[] = [];
-          let penX = word.colStart * CELL + padding - measure.leftBearingFirst * scale;
-          for (const char of text) {
-            const advance = advances[char] ?? 500;
-            const path = metrics.paths[char];
-            const rendered = glyphPath(path, penX, row.baselineY, scale);
-            if (path !== undefined) glyphParts.push(rendered);
-            penX += advance * scale;
-          }
-          return `<g fill="${fill}">${glyphParts.join('')}</g>`;
+          const penX = word.colStart * CELL + padding - measure.leftBearingFirst * scale;
+          const run = renderGlyphRun(text, penX, row.baselineY, scale, metrics);
+          return `<g fill="${fill}">${run.svg}</g>`;
         })
         .join(''),
     )

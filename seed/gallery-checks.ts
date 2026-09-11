@@ -5,7 +5,7 @@
  * from app/(fixed)/gallery/page.tsx - a dynamic filesystem access anywhere
  * in that chain makes Turbopack trace the whole project into the server
  * build. The pure validation logic that used to share this file lives in
- * seed/gallery-specs.ts instead, which the page imports directly.
+ * lib/gallery/specs.ts instead, which the page imports directly.
  */
 import * as path from 'node:path';
 import { pathToFileURL } from 'node:url';

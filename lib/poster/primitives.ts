@@ -1,5 +1,6 @@
 import { POSTER_HEIGHT, POSTER_WIDTH, type GrainLevel } from './types';
 import { getInkBounds } from './glyph-bounds';
+import type { FontMetrics } from './metrics';
 
 export function mulberry32(seed: number): () => number {
   let a = seed >>> 0;
@@ -73,6 +74,35 @@ export function renderGrain(grain: GrainLevel, seed: number, ink: string): strin
 export function glyphPath(path: string | undefined, penX: number, baselineY: number, scale: number): string {
   if (path === undefined) return '';
   return `<path d="${path}" transform="translate(${penX.toFixed(2)} ${baselineY.toFixed(2)}) scale(${scale.toFixed(6)})"/>`;
+}
+
+export interface GlyphRun {
+  /** Concatenated <path> elements, with no wrapping <g> - the caller owns fill and grouping. */
+  readonly svg: string;
+  /** Pen position after the run's last advance, for callers that keep writing on the same baseline. */
+  readonly penX: number;
+}
+
+/**
+ * Sets one space-free run of characters on a single baseline: advance the pen
+ * per character, emit one path per glyph that has one. Mechanics only - where
+ * the run starts, what color it takes, whether it gets wrapped in a <g>, and
+ * what happens between words are all the mode's own business.
+ */
+export function renderGlyphRun(
+  text: string,
+  penX: number,
+  baselineY: number,
+  scale: number,
+  metrics: FontMetrics,
+): GlyphRun {
+  const parts: string[] = [];
+  let pen = penX;
+  for (const char of text) {
+    parts.push(glyphPath(metrics.paths[char], pen, baselineY, scale));
+    pen += (metrics.advances[char] ?? 500) * scale;
+  }
+  return { svg: parts.join(''), penX: pen };
 }
 
 export interface InkMeasure {

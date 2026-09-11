@@ -1,19 +1,6 @@
 import { POSTER_HEIGHT, POSTER_WIDTH, type Density, type GrainLevel } from '../types';
-import { glyphPath, measureInk, mulberry32, renderGrain, wordNaturalWidth } from '../primitives';
-import onestGlyphs from '../onest-glyphs.json';
-
-interface FontMetrics {
-  readonly unitsPerEm: number;
-  readonly capHeight: number;
-  readonly ascender: number;
-  readonly descender: number;
-  readonly advances: Readonly<Record<string, number>>;
-  readonly paths: Readonly<Record<string, string>>;
-}
-
-// Same widening as modes/stack.ts - see that file for the full explanation.
-// Duplicated here on purpose: this mode does not import from stack.ts.
-const METRICS = onestGlyphs as unknown as Record<'500' | '800', FontMetrics>;
+import { measureInk, mulberry32, renderGlyphRun, renderGrain, wordNaturalWidth } from '../primitives';
+import { METRICS } from '../metrics';
 
 // The giant's painted ink width, as a multiple of canvas width. 1.25 was
 // picked over a larger ratio (e.g. 1.6) because at 1.6 only ~62% of the
@@ -183,14 +170,8 @@ export function renderBreak(input: RenderBreakInput): string {
   };
 
   const giantFill = giantIndex === accentIndex ? colors.accent : colors.ink;
-  const giantGlyphParts: string[] = [];
-  let giantPen = giantPenX;
-  for (const char of giantWord) {
-    const advance = advances[char] ?? 500;
-    giantGlyphParts.push(glyphPath(metrics.paths[char], giantPen, giantBaselineY, scale));
-    giantPen += advance * scale;
-  }
-  const giantSvg = `<g fill="${giantFill}">${giantGlyphParts.join('')}</g>`;
+  const giantRun = renderGlyphRun(giantWord, giantPenX, giantBaselineY, scale, metrics);
+  const giantSvg = `<g fill="${giantFill}">${giantRun.svg}</g>`;
 
   const blockIndices = words.map((_, i) => i).filter((i) => i !== giantIndex);
   const blockWords = blockIndices.map((i) => words[i]);
@@ -259,14 +240,9 @@ export function renderBreak(input: RenderBreakInput): string {
     const baselineY = finalBlockY0 + finalLayout.baselineOffsets[row];
     const fill = wordIndex === accentIndex ? colors.accent : colors.ink;
 
-    const rowGlyphParts: string[] = [];
-    let pen = finalBlockX0 - measure.leftBearingFirst * finalLayout.scale;
-    for (const char of word) {
-      const advance = advances[char] ?? 500;
-      rowGlyphParts.push(glyphPath(metrics.paths[char], pen, baselineY, finalLayout.scale));
-      pen += advance * finalLayout.scale;
-    }
-    blockGlyphParts.push(`<g fill="${fill}">${rowGlyphParts.join('')}</g>`);
+    const pen = finalBlockX0 - measure.leftBearingFirst * finalLayout.scale;
+    const rowRun = renderGlyphRun(word, pen, baselineY, finalLayout.scale, metrics);
+    blockGlyphParts.push(`<g fill="${fill}">${rowRun.svg}</g>`);
   }
 
   return renderGrain(grain, seed, colors.ink) + giantSvg + blockGlyphParts.join('');

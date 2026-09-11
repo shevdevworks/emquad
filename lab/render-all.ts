@@ -465,6 +465,23 @@ if (!filter) {
   const sortedHashes = Object.fromEntries(Object.entries(hashes).sort(([a], [b]) => a.localeCompare(b)));
   fs.writeFileSync(path.join(outDir, 'hashes.json'), `${JSON.stringify(sortedHashes, null, 2)}\n`, 'utf8');
 
+  // Drop SVGs of cases that no longer exist in lab/cases.ts, so lab/out
+  // mirrors the current case list instead of accumulating renames. Only on a
+  // full run - a --filter run renders a subset and must not touch the rest -
+  // and only after every case has been written, so an aborted run deletes
+  // nothing. lab/prev still holds this run's copies (taken before the render)
+  // and is rebuilt from a clean lab/out on the next full run.
+  const liveIds = new Set(selectedCases.map((c) => c.id));
+  const stale = fs
+    .readdirSync(outDir)
+    .filter((file) => file.endsWith('.svg') && !liveIds.has(file.slice(0, -'.svg'.length)));
+  for (const file of stale) {
+    fs.unlinkSync(path.join(outDir, file));
+  }
+  if (stale.length > 0) {
+    console.log(`\nremoved ${stale.length} stale svg${stale.length === 1 ? '' : 's'} from lab/out: ${stale.join(', ')}`);
+  }
+
   const toCard = (r: CaseResult): SheetCard => ({
     id: r.id,
     svg: r.svg,

@@ -1,22 +1,6 @@
 import { POSTER_HEIGHT, POSTER_WIDTH, type Density, type GrainLevel } from '../types';
-import { glyphPath, measureInk, renderGrain, wordNaturalWidth } from '../primitives';
-import onestGlyphs from '../onest-glyphs.json';
-
-interface FontMetrics {
-  readonly unitsPerEm: number;
-  readonly capHeight: number;
-  readonly ascender: number;
-  readonly descender: number;
-  readonly advances: Readonly<Record<string, number>>;
-  readonly paths: Readonly<Record<string, string>>;
-}
-
-// The JSON import's inferred type has one literal property per glyph, with
-// no generic string index signature, so arbitrary-character lookups need a
-// wider type. The literal shape is verified by hand against the file's
-// contents; this only widens the `advances`/`paths` index, it doesn't change
-// any value.
-const METRICS = onestGlyphs as unknown as Record<'500' | '800', FontMetrics>;
+import { measureInk, renderGlyphRun, renderGrain, wordNaturalWidth } from '../primitives';
+import { METRICS } from '../metrics';
 
 // Vertical margins are fixed regardless of density - the asymmetry (top
 // tighter than bottom) is a deliberate optical correction, not meant to be
@@ -258,15 +242,9 @@ export function renderStack(input: RenderStackInput): string {
       const word = row.words[j];
       const fill = word.index === accentIndex ? colors.accent : colors.ink;
 
-      const glyphParts: string[] = [];
-      for (const char of word.text) {
-        const advance = metrics.advances[char] ?? 500;
-        const path = metrics.paths[char];
-        const rendered = glyphPath(path, penX, baselineY, scale);
-        if (path !== undefined) glyphParts.push(rendered);
-        penX += advance * scale;
-      }
-      textParts.push(`<g fill="${fill}">${glyphParts.join('')}</g>`);
+      const run = renderGlyphRun(word.text, penX, baselineY, scale, metrics);
+      penX = run.penX;
+      textParts.push(`<g fill="${fill}">${run.svg}</g>`);
 
       if (j < row.words.length - 1) {
         penX += spaceWidth * scale;

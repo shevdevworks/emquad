@@ -8,16 +8,19 @@
  * of node: imports, fs, path, url and process: it is reachable from
  * app/(fixed)/gallery/page.tsx, and a dynamic filesystem access anywhere in
  * that chain makes Turbopack trace the whole project into the server build
- * (seed/gallery-checks.ts used to do exactly that before this file split).
+ * (seed/gallery-checks.ts used to do exactly that before the file split in
+ * 7.4). It lives under lib/ rather than seed/ so the dependency runs
+ * seed -> lib only: the application never imports out of seed/ for code,
+ * only for the GALLERY_URLS data array.
  *
  * Every check below reuses the same code the editor and the Server Action
  * already use (searchParamsToSpec, specToSearchParams, normalizeParams,
  * validatePosterSpec) - this file never re-implements URL parsing or
  * parameter normalization.
  */
-import type { PosterParams, PosterSpec } from '../lib/poster/types';
-import { normalizeParams, normalizePhrase, validatePosterSpec, type RawPosterParams } from '../lib/poster/validate';
-import { searchParamsToSpec, specToSearchParams } from '../lib/poster/url';
+import type { PosterParams, PosterSpec } from '../poster/types';
+import { normalizeParams, normalizePhrase, validatePosterSpec, type RawPosterParams } from '../poster/validate';
+import { searchParamsToSpec, specToSearchParams } from '../poster/url';
 
 export const MAX_RECORDS = 16;
 

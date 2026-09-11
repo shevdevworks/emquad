@@ -1,24 +1,8 @@
 import { POSTER_HEIGHT, POSTER_WIDTH, type Density, type GrainLevel } from '../types';
 import { renderGrain, wordNaturalWidth } from '../primitives';
-import onestGlyphs from '../onest-glyphs.json';
-
-// Duplicated here on purpose: this mode does not import from stack.ts,
-// break.ts, grid.ts or column.ts.
-interface FontMetrics {
-  readonly unitsPerEm: number;
-  readonly capHeight: number;
-  readonly ascender: number;
-  readonly descender: number;
-  readonly advances: Readonly<Record<string, number>>;
-  readonly paths: Readonly<Record<string, string>>;
-}
-
-// The JSON import's inferred type has one literal property per glyph, with
-// no generic string index signature, so arbitrary-character lookups need a
-// wider type. The literal shape is verified by hand against the file's
-// contents; this only widens the `advances`/`paths` index, it doesn't change
-// any value.
-const METRICS = onestGlyphs as unknown as Record<'500' | '800', FontMetrics>;
+// Ring sets glyphs on its own four-part transform (translate, rotate,
+// translate, scale), so it uses METRICS directly and never renderGlyphRun.
+import { METRICS, type FontMetrics } from '../metrics';
 
 const CX = POSTER_WIDTH / 2;
 const CY = POSTER_HEIGHT / 2;

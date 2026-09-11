@@ -1,18 +1,4 @@
-import onestGlyphs from './onest-glyphs.json';
-
-interface FontMetrics {
-  readonly unitsPerEm: number;
-  readonly capHeight: number;
-  readonly ascender: number;
-  readonly descender: number;
-  readonly advances: Readonly<Record<string, number>>;
-  readonly paths: Readonly<Record<string, string>>;
-}
-
-// Same widening as modes/stack.ts: the JSON import's inferred type has one
-// literal property per glyph, so arbitrary-character lookups need a wider
-// type. Redeclared locally to keep this file independent of modes/stack.ts.
-const METRICS = onestGlyphs as unknown as Record<'500' | '800', FontMetrics>;
+import { METRICS } from './metrics';
 
 export interface InkBounds {
   readonly x0: number;
