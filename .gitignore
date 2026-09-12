@@ -64,7 +64,8 @@ lab/gallery/
 
 # working notes kept outside the repository: project journal and agent rules.
 # AGENTS.md is rewritten by next dev on every run, so it has to stay ignored
-# rather than simply deleted.
+# rather than simply deleted. docs/ itself is tracked - it holds the README
+# screenshots - so only the journal is named here.
 AGENTS.md
 CLAUDE.md
-docs/
+docs/handoff.md
