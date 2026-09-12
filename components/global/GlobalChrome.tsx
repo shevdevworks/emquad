@@ -3,7 +3,9 @@
 import { useSyncExternalStore } from 'react';
 import type { ReactNode } from 'react';
 import Link from 'next/link';
+import { usePathname } from 'next/navigation';
 import { SITE_ACCENT, TEXT_PRIMARY } from '@/lib/theme';
+import { BackLink } from './BackLink';
 
 const PHOTO_OPACITY = 0.6;
 const GRAIN_OPACITY = 0.07;
@@ -201,33 +203,63 @@ interface SiteHeaderProps {
   readonly scrolled: boolean;
 }
 
+// One style for every item in the header, wordmark included, so the back
+// button (a <button>, which carries its own UA font and color) is
+// indistinguishable from the links next to it.
+const HEADER_ITEM_STYLE = {
+  color: TEXT_PRIMARY,
+  fontFamily: 'Onest',
+  fontWeight: 800,
+  letterSpacing: '0.08em',
+  fontSize: '13px',
+} as const;
+
+const HEADER_ITEM_CLASS = 'transition-opacity hover:opacity-70';
+
 function SiteHeader({ scrolled }: SiteHeaderProps) {
+  const pathname = usePathname();
+
+  const isHome = pathname === '/';
+  // The poster page carries a CREATE YOUR OWN button in its own action row,
+  // so a header CREATE there would be a second copy of the same offer.
+  const showCreate = pathname !== '/create' && !pathname.startsWith('/p/');
+  const showGallery = pathname !== '/gallery';
+
   return (
     <div
       className={`emq-site-header flex h-12 shrink-0 items-center justify-between${
         scrolled ? ' emq-site-header--scrolled' : ''
       }`}
     >
-      <span
-        style={{ color: TEXT_PRIMARY, fontFamily: 'Onest', fontWeight: 800, letterSpacing: '0.08em', fontSize: '13px' }}
-      >
-        EMQUAD
-      </span>
+      {isHome ? (
+        // Already here, so there is nowhere to link: the wordmark reloads the
+        // page instead. router.refresh() would not do it - it re-fetches the
+        // server payload and leaves client state in place.
+        <button
+          type="button"
+          className={HEADER_ITEM_CLASS}
+          style={HEADER_ITEM_STYLE}
+          onClick={() => window.location.reload()}
+        >
+          EMQUAD
+        </button>
+      ) : (
+        <Link href="/" className={HEADER_ITEM_CLASS} style={HEADER_ITEM_STYLE}>
+          EMQUAD
+        </Link>
+      )}
       <div className="flex items-center gap-6">
-        <Link
-          href="/gallery"
-          className="transition-opacity hover:opacity-70"
-          style={{ color: TEXT_PRIMARY, fontFamily: 'Onest', fontWeight: 800, letterSpacing: '0.08em', fontSize: '13px' }}
-        >
-          GALLERY
-        </Link>
-        <Link
-          href="/create"
-          className="transition-opacity hover:opacity-70"
-          style={{ color: TEXT_PRIMARY, fontFamily: 'Onest', fontWeight: 800, letterSpacing: '0.08em', fontSize: '13px' }}
-        >
-          CREATE
-        </Link>
+        {!isHome && <BackLink className={HEADER_ITEM_CLASS} style={HEADER_ITEM_STYLE} />}
+        {showGallery && (
+          <Link href="/gallery" className={HEADER_ITEM_CLASS} style={HEADER_ITEM_STYLE}>
+            GALLERY
+          </Link>
+        )}
+        {showCreate && (
+          <Link href="/create" className={HEADER_ITEM_CLASS} style={HEADER_ITEM_STYLE}>
+            CREATE
+          </Link>
+        )}
       </div>
     </div>
   );

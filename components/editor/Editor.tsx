@@ -12,6 +12,7 @@ import {
   MAX_WORDS,
   MIN_WORDS,
   MODES,
+  PARAMS_VERSION,
   type GrainLevel,
   type PosterParams,
   type PosterSpec,
@@ -23,6 +24,7 @@ import {
   validatePhrase,
   type ValidationIssue,
 } from '@/lib/poster/validate';
+import { RANDOM_PHRASES } from './random-phrases';
 import { SegmentedControl } from './SegmentedControl';
 import { Toggle } from './Toggle';
 import { Preview } from './Preview';
@@ -101,6 +103,40 @@ function describeIssue(issue: ValidationIssue): string {
   // remaining case: issue.field === 'seed'
   if (issue.code === 'seed_not_integer') return 'Seed must be a whole number.';
   return `Seed must be between 0 and ${MAX_SEED.toLocaleString('en-US')}.`; // remaining case: seed_out_of_range
+}
+
+function randomIndex(length: number): number {
+  return Math.floor(Math.random() * length);
+}
+
+function pick<T>(items: readonly T[]): T {
+  return items[randomIndex(items.length)];
+}
+
+// Math.random is banned inside lib/poster, where a poster has to come out the
+// same every time it is rendered. Here it runs once per click, in the browser,
+// and its result is written into the spec as a fixed seed - so the poster the
+// button produces is as reproducible as any other.
+function randomSpec(): PosterSpec {
+  const phrase = pick(RANDOM_PHRASES);
+  // Drawn after the phrase, never before: accent is an index into that
+  // phrase's own words, and one left over from the previous phrase would fail
+  // validateParams with accent_out_of_range. The extra slot is "no accent".
+  const wordCount = splitWords(phrase).length;
+  const accentSlot = randomIndex(wordCount + 1);
+
+  return {
+    phrase,
+    params: {
+      v: PARAMS_VERSION,
+      mode: pick(AVAILABLE_MODES),
+      invert: Math.random() < 0.5,
+      accent: accentSlot === wordCount ? null : accentSlot,
+      density: pick(DENSITIES),
+      grain: pick(GRAIN_LEVELS),
+      seed: randomIndex(MAX_SEED + 1),
+    },
+  };
 }
 
 export function Editor({ initialSpec, initialSvg }: EditorProps) {
@@ -321,9 +357,9 @@ export function Editor({ initialSpec, initialSvg }: EditorProps) {
             type="button"
             className="emq-editor-glass flex-1 rounded-lg px-4 py-2.5 transition-opacity hover:opacity-90"
             style={{ ...BUTTON_TEXT_STYLE, color: TEXT_PRIMARY }}
-            onClick={() => updateParams({ seed: Math.floor(Math.random() * (MAX_SEED + 1)) })}
+            onClick={() => setSpec(randomSpec())}
           >
-            New random seed
+            Randomize
           </button>
 
           <button
