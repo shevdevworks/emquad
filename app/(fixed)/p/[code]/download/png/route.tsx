@@ -1,5 +1,5 @@
 import { ImageResponse } from 'next/og';
-import { render } from '@/lib/poster/render';
+import { tryRender } from '@/lib/poster/render';
 import { getPosterByCode, posterSpecFromRow } from '@/lib/db/queries';
 import { posterFileName, asciiFileName, contentDisposition } from '@/lib/poster/filename';
 
@@ -11,11 +11,11 @@ export async function GET(
 ) {
   const { code } = await params;
   const row = await getPosterByCode(code);
-  if (!row) {
+  // A row that cannot render is answered like a missing one - see the poster page.
+  const svg = row ? tryRender(posterSpecFromRow(row)) : null;
+  if (!row || svg === null) {
     return new Response('Not Found', { status: 404 });
   }
-
-  const svg = render(posterSpecFromRow(row));
   const svgDataUrl = `data:image/svg+xml;base64,${Buffer.from(svg, 'utf-8').toString('base64')}`;
   const name = posterFileName(row.phrase, code, 'png');
   const fallback = asciiFileName(code, 'png');

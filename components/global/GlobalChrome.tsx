@@ -5,7 +5,7 @@ import type { ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { SITE_ACCENT, TEXT_PRIMARY } from '@/lib/theme';
-import { BackLink } from './BackLink';
+import { BackLink, useSiteHistory } from './BackLink';
 
 const PHOTO_OPACITY = 0.6;
 const GRAIN_OPACITY = 0.07;
@@ -218,6 +218,7 @@ const HEADER_ITEM_CLASS = 'transition-opacity hover:opacity-70';
 
 function SiteHeader({ scrolled }: SiteHeaderProps) {
   const pathname = usePathname();
+  useSiteHistory();
 
   const isHome = pathname === '/';
   // The poster page carries a CREATE YOUR OWN button in its own action row,

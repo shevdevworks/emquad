@@ -1,5 +1,5 @@
 import { ImageResponse } from 'next/og';
-import { render, paperColorFor } from '@/lib/poster/render';
+import { tryRender, paperColorFor } from '@/lib/poster/render';
 import { getPosterByCode, posterSpecFromRow } from '@/lib/db/queries';
 
 export const alt = 'Emquad poster';
@@ -18,7 +18,11 @@ export default async function Image({
   }
 
   const spec = posterSpecFromRow(row);
-  const svg = render(spec);
+  // A row that cannot render is answered like a missing one - see the poster page.
+  const svg = tryRender(spec);
+  if (svg === null) {
+    return new Response('Not Found', { status: 404 });
+  }
   const svgDataUrl = `data:image/svg+xml;base64,${Buffer.from(svg, 'utf-8').toString('base64')}`;
 
   return new ImageResponse(

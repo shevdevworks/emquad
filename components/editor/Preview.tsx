@@ -8,26 +8,32 @@ export interface PreviewProps {
   // successfully rendered SVG instead of calling render() with it.
   readonly spec: PosterSpec | null;
   readonly initialSvg: string;
+  /** Told whether the latest spec has a layout in its mode; see tryRender in render.ts. */
+  readonly onFitChange: (fits: boolean) => void;
 }
 
-type RenderFn = (spec: PosterSpec) => string;
+// tryRender, not render: a valid spec can still have no layout in its mode,
+// and a throw here would take the whole editor down with it.
+type RenderFn = (spec: PosterSpec) => string | null;
 
 interface Rendered {
   readonly svg: string;
   /** The inputs `svg` was produced from; both null while the server frame is still showing. */
   readonly spec: PosterSpec | null;
   readonly fn: RenderFn | null;
+  /** False when the latest spec could not be laid out; `svg` then still holds the last frame that could. */
+  readonly fits: boolean;
 }
 
-export function Preview({ spec, initialSvg }: PreviewProps) {
+export function Preview({ spec, initialSvg, onFitChange }: PreviewProps) {
   const [renderFn, setRenderFn] = useState<RenderFn | null>(null);
-  const [rendered, setRendered] = useState<Rendered>({ svg: initialSvg, spec: null, fn: null });
+  const [rendered, setRendered] = useState<Rendered>({ svg: initialSvg, spec: null, fn: null, fits: true });
 
   useEffect(() => {
     let cancelled = false;
 
-    void import('@/lib/poster/render').then(({ render }) => {
-      if (!cancelled) setRenderFn(() => render);
+    void import('@/lib/poster/render').then(({ tryRender }) => {
+      if (!cancelled) setRenderFn(() => tryRender);
     });
 
     return () => {
@@ -42,8 +48,16 @@ export function Preview({ spec, initialSvg }: PreviewProps) {
   // browser sees anything. The guard makes this run once per new spec, and an
   // invalid spec (null) simply keeps the last good SVG on screen.
   if (spec !== null && renderFn !== null && (spec !== rendered.spec || renderFn !== rendered.fn)) {
-    setRendered({ svg: renderFn(spec), spec, fn: renderFn });
+    const svg = renderFn(spec);
+    setRendered({ svg: svg ?? rendered.svg, spec, fn: renderFn, fits: svg !== null });
   }
+
+  // The parent's messages live in its own state, which cannot be set during
+  // this component's render - hence an effect, firing only when the answer
+  // actually changes.
+  useEffect(() => {
+    onFitChange(rendered.fits);
+  }, [rendered.fits, onFitChange]);
 
   return <div className="emq-editor-preview-slot" dangerouslySetInnerHTML={{ __html: rendered.svg }} />;
 }

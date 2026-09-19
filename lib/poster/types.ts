@@ -28,6 +28,19 @@ export const MIN_WORDS = 3;
 export const MAX_WORDS = 7;
 export const MAX_CHARS = 40;
 
+/**
+ * Every character the bundled Onest outlines can draw (the key set of
+ * onest-glyphs.json, identical for both weights). Spelled out here instead of
+ * read from that JSON so validation stays light enough for the editor's main
+ * bundle - the 112 KB outline file only travels with the renderer. The lab
+ * fails if this string and the JSON ever drift apart. Every character's
+ * uppercase form is in the set too, which is what the modes actually draw.
+ */
+export const SUPPORTED_CHARS =
+  '0123456789!"#$%&\'()*+,-./:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\\]^_`abcdefghijklmnopqrstuvwxyz{|}~«»' +
+  'ЁЂЃЄЅІЇЈЉЊЋЌЎЏАБВГДЕЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯабвгдежзийклмнопрстуфхцчшщъыьэюяёђѓєѕіїјљњћќўџҐґ' +
+  '–—‘’‚“”„…';
+
 /* -------------------------------------------------------------------------- */
 /* Composition modes                                                          */
 /* -------------------------------------------------------------------------- */

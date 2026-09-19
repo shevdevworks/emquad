@@ -10,6 +10,7 @@ import {
   type ValidationIssue,
 } from '@/lib/poster/validate';
 import { findRecentDuplicate, insertPoster } from '@/lib/db/queries';
+import { tryRender } from '@/lib/poster/render';
 import { allowSave } from '@/lib/rate-limit';
 
 export type SavePosterResult =
@@ -43,11 +44,21 @@ export async function savePoster(phrase: string, params: RawPosterParams): Promi
     return { ok: false, reason: 'invalid', issues: [{ field: 'phrase', code: 'too_long' }] };
   }
 
-  const spec = { phrase: normalizePhrase(phrase), params: normalizeParams(params) };
+  // `params` is typed, but the network is not: null or undefined would throw
+  // on the first field read. Anything that is not an object falls back to the
+  // defaults, the same way normalizeParams already treats a malformed field.
+  const rawParams: RawPosterParams = typeof params === 'object' && params !== null ? params : {};
+  const spec = { phrase: normalizePhrase(phrase), params: normalizeParams(rawParams) };
 
   const validation = validatePosterSpec(spec);
   if (!validation.ok) {
     return { ok: false, reason: 'invalid', issues: validation.issues };
+  }
+
+  // A saved row is rendered on every visit, so a spec with no layout must
+  // never reach the table - its poster page would fail forever after.
+  if (tryRender(spec) === null) {
+    return { ok: false, reason: 'invalid', issues: [{ field: 'layout', code: 'does_not_fit' }] };
   }
 
   const duplicate = await findRecentDuplicate(spec);

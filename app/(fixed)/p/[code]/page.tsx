@@ -1,7 +1,7 @@
 import { cache } from 'react';
 import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
-import { render } from '@/lib/poster/render';
+import { tryRender } from '@/lib/poster/render';
 import { getPosterByCode, posterSpecFromRow } from '@/lib/db/queries';
 import { PosterDisplay } from '@/components/poster/PosterDisplay';
 import { posterRobots, posterJsonLd, serializeJsonLd } from '@/lib/seo/poster-seo';
@@ -37,7 +37,11 @@ export default async function Page({
   const row = await getPoster(code);
   if (!row) notFound();
 
-  const svg = render(posterSpecFromRow(row));
+  // Save refuses specs with no layout, so a row that cannot render predates
+  // that check or was written by hand. A 404 is the honest answer: there is
+  // no poster to show, and a 500 would read as the site being down.
+  const svg = tryRender(posterSpecFromRow(row));
+  if (svg === null) notFound();
   const jsonLd = posterJsonLd({ code, phrase: row.phrase, inGallery: row.inGallery });
 
   return (

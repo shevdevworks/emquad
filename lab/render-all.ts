@@ -2,9 +2,20 @@ import * as fs from 'node:fs';
 import * as path from 'node:path';
 import * as crypto from 'node:crypto';
 
-import { DENSITIES, POSTER_HEIGHT, POSTER_WIDTH, type Density, type PosterSpec } from '../lib/poster/types';
+import {
+  DEFAULT_PARAMS,
+  DENSITIES,
+  MODES,
+  POSTER_HEIGHT,
+  POSTER_WIDTH,
+  SUPPORTED_CHARS,
+  type Density,
+  type PosterSpec,
+} from '../lib/poster/types';
 import { render } from '../lib/poster/render';
-import { splitWords } from '../lib/poster/validate';
+import { normalizePhrase, splitWords, validatePosterSpec } from '../lib/poster/validate';
+import { NoGlyphPathError } from '../lib/poster/glyph-bounds';
+import { mulberry32 } from '../lib/poster/primitives';
 import { MARGIN_RATIO } from '../lib/poster/modes/stack';
 import { GIANT_MIN_INK_WIDTH_PX, MIN_GIANT_BLOCK_GAP_PX } from '../lib/poster/modes/break';
 import { CELL, DENSITY_METRICS as GRID_DENSITY_METRICS, PADDING as GRID_PADDING } from '../lib/poster/modes/grid';
@@ -466,6 +477,72 @@ if (columnShrinkCases.length > 0) {
       `  ${c.id}: measure actual=${c.measureActualPx.toFixed(2)}px design=${c.measureDesignPx.toFixed(2)}px`,
     );
   }
+}
+
+// The validator's character list is a hand-kept copy of the font's key set
+// (see SUPPORTED_CHARS in types.ts). If they drift, validation either lets
+// through a character render() cannot draw or rejects one it can.
+{
+  const fontChars = (weight: '500' | '800') =>
+    // Only the key set of paths is read here; narrower than modes/*.ts's FontMetrics cast.
+    Object.keys((onestGlyphs as unknown as Record<string, { readonly paths: Record<string, string> }>)[weight].paths)
+      .sort()
+      .join('');
+  const listed = Array.from(SUPPORTED_CHARS).sort().join('');
+  const ok = listed === fontChars('500') && listed === fontChars('800');
+  if (!ok) exactFailures++;
+  console.log(`\n[${ok ? 'PASS' : 'FAIL'}] SUPPORTED_CHARS matches onest-glyphs.json key set${ok ? '' : '!'}`);
+}
+
+// Sweep: random phrases, every mode and density. A spec the validator accepts
+// may still have no layout in its mode - grid and ring throw on those, and
+// tryRender turns that into a clean refusal - but it must never fail on a
+// missing glyph, and whatever renders must not carry NaN or Infinity.
+// Deterministic (fixed seed), so a failure reproduces on the next run.
+{
+  const rng = mulberry32(20260919);
+  const pick = (s: string) => s[Math.floor(rng() * s.length)];
+  const pools = [
+    'abcdefghijklmnopqrstuvwxyz',
+    'абвгдежзийклмнопрстуфхцчшщьюяіїєґ',
+    '0123456789',
+    '!?.,:;-—«»"\'()&',
+    'WM',
+    'éñü€№ß', // outside the font (ß uppercases to SS, which is inside)
+  ];
+  let valid = 0;
+  let noLayout = 0;
+  const failures: string[] = [];
+  for (let i = 0; i < 1500; i++) {
+    const words: string[] = [];
+    const wordCount = 3 + Math.floor(rng() * 5);
+    for (let w = 0; w < wordCount; w++) {
+      const pool = pools[Math.floor(rng() * pools.length)];
+      const length = 1 + Math.floor(rng() * (rng() < 0.2 ? 16 : 6));
+      words.push(Array.from({ length }, () => pick(pool)).join(''));
+    }
+    const phrase = normalizePhrase(words.join(' '));
+    for (const mode of MODES) {
+      for (const density of DENSITIES) {
+        const spec: PosterSpec = { phrase, params: { ...DEFAULT_PARAMS, mode, density, seed: i } };
+        if (!validatePosterSpec(spec).ok) continue;
+        valid++;
+        try {
+          const svg = render(spec);
+          if (/NaN|Infinity/.test(svg)) failures.push(`${mode}/${density} non-finite number: ${JSON.stringify(phrase)}`);
+        } catch (err) {
+          if (err instanceof NoGlyphPathError) failures.push(`${mode}/${density} ${err.message}: ${JSON.stringify(phrase)}`);
+          else noLayout++;
+        }
+      }
+    }
+  }
+  const ok = failures.length === 0;
+  if (!ok) exactFailures++;
+  console.log(
+    `[${ok ? 'PASS' : 'FAIL'}] sweep: ${valid} valid specs, ${noLayout} without a layout (refused by tryRender), ${failures.length} failures${ok ? '' : '!'}`,
+  );
+  for (const f of failures.slice(0, 10)) console.log(`  ${f}`);
 }
 
 console.log(

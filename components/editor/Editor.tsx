@@ -96,8 +96,10 @@ function describeIssue(issue: ValidationIssue): string {
   if (issue.field === 'phrase') {
     if (issue.code === 'too_few_words') return `Phrase must be at least ${MIN_WORDS} words.`;
     if (issue.code === 'too_many_words') return `Phrase must be ${MAX_WORDS} words or fewer.`;
+    if (issue.code === 'unsupported_chars') return `The typeface has no glyph for: ${issue.chars.join(' ')}`;
     return `Phrase must be under ${MAX_CHARS} characters.`; // remaining case: too_long
   }
+  if (issue.field === 'layout') return "This phrase doesn't fit this mode at this density. Try another mode or density.";
   if (issue.field === 'mode') return 'This mode is not available yet.';
   if (issue.field === 'accent') return "Accent word must be one of the phrase's words.";
   // remaining case: issue.field === 'seed'
@@ -143,6 +145,9 @@ export function Editor({ initialSpec, initialSvg }: EditorProps) {
   const [spec, setSpec] = useState<PosterSpec>(() => specFromAddress(initialSpec));
   const [saveMessages, setSaveMessages] = useState<readonly string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
+  // Reported by Preview, the only place the renderer is loaded. Starts true:
+  // until the renderer arrives there is nothing to say otherwise.
+  const [layoutFits, setLayoutFits] = useState(true);
 
   // Ref, not a boolean flag: React Strict Mode double-invokes the mount
   // effect in dev, and a flip-once boolean does not survive that second
@@ -181,6 +186,9 @@ export function Editor({ initialSpec, initialSvg }: EditorProps) {
     // a non-disabled button. savingRef is set before any await, so it blocks
     // the second call in the same tick, ahead of React's state update.
     if (savingRef.current) return;
+    // Already on screen and the server would refuse it too; not worth a
+    // round trip that also spends the visitor's save budget.
+    if (liveIssues.some((issue) => issue.field === 'layout')) return;
     savingRef.current = true;
 
     clearTimeout(debounceTimer.current);
@@ -201,11 +209,15 @@ export function Editor({ initialSpec, initialSvg }: EditorProps) {
   const wordCount = words.length;
   const phraseResult = validatePhrase(spec.phrase);
   const paramsResult = validateParams(spec.params, wordCount);
-  const liveIssues: readonly ValidationIssue[] = [
+  const ruleIssues: readonly ValidationIssue[] = [
     ...(phraseResult.ok ? [] : phraseResult.issues),
     ...(paramsResult.ok ? [] : paramsResult.issues),
   ];
-  const validSpec = liveIssues.length === 0 ? spec : null;
+  const validSpec = ruleIssues.length === 0 ? spec : null;
+  // Layout is only known for a spec that passed the rules and went through
+  // Preview; for any other spec the rule messages already say what is wrong.
+  const liveIssues: readonly ValidationIssue[] =
+    validSpec !== null && !layoutFits ? [{ field: 'layout', code: 'does_not_fit' }] : ruleIssues;
   const displayedMessages =
     liveIssues.length > 0 ? liveIssues.map(describeIssue) : saveMessages;
 
@@ -386,7 +398,7 @@ export function Editor({ initialSpec, initialSvg }: EditorProps) {
       </div>
 
       <div className="emq-editor-preview">
-        <Preview spec={validSpec} initialSvg={initialSvg} />
+        <Preview spec={validSpec} initialSvg={initialSvg} onFitChange={setLayoutFits} />
       </div>
     </div>
   );

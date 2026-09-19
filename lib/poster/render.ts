@@ -58,3 +58,18 @@ export function render(spec: PosterSpec): string {
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${POSTER_WIDTH} ${POSTER_HEIGHT}">${background}${content}</svg>`;
 }
+
+/**
+ * render() for callers that must not crash on a spec with no layout. A spec
+ * can pass validatePosterSpec and still be unplaceable in its mode - grid
+ * throws when a word is wider than the density's span ceiling, ring when its
+ * type would drop below the legible minimum - and those limits live inside
+ * the modes, not in the validator. Returns null in that case.
+ */
+export function tryRender(spec: PosterSpec): string | null {
+  try {
+    return render(spec);
+  } catch {
+    return null;
+  }
+}

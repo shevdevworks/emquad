@@ -69,3 +69,6 @@ lab/gallery/
 AGENTS.md
 CLAUDE.md
 docs/handoff.md
+
+# local scrap folder, never part of the project
+_emquad-scrap/

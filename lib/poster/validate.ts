@@ -9,6 +9,7 @@ import {
   MIN_WORDS,
   MODES,
   PARAMS_VERSION,
+  SUPPORTED_CHARS,
   type Density,
   type GrainLevel,
   type Mode,
@@ -114,9 +115,30 @@ export function normalizeParams(raw: RawPosterParams): PosterParams {
 
 export type ValidationIssue =
   | { readonly field: 'phrase'; readonly code: 'too_few_words' | 'too_many_words' | 'too_long' }
+  | { readonly field: 'phrase'; readonly code: 'unsupported_chars'; readonly chars: readonly string[] }
   | { readonly field: 'mode'; readonly code: 'unavailable_mode' }
   | { readonly field: 'accent'; readonly code: 'accent_out_of_range' }
-  | { readonly field: 'seed'; readonly code: 'seed_not_integer' | 'seed_out_of_range' };
+  | { readonly field: 'seed'; readonly code: 'seed_not_integer' | 'seed_out_of_range' }
+  // Not produced by validatePosterSpec: a spec can pass every rule above and
+  // still have no layout in its mode (a long word in an airy grid). Only a
+  // trial render finds that out - see tryRender in render.ts.
+  | { readonly field: 'layout'; readonly code: 'does_not_fit' };
+
+const SUPPORTED_CHAR_SET = new Set(Array.from(SUPPORTED_CHARS));
+
+/**
+ * Characters of the phrase the typeface cannot draw, each listed once, in
+ * the order they first appear. A character counts as drawable only if its
+ * uppercase form is, since every mode sets the phrase in capitals.
+ */
+export function unsupportedChars(phrase: string): string[] {
+  const found = new Set<string>();
+  for (const ch of phrase) {
+    if (/\s/.test(ch)) continue;
+    if (Array.from(ch.toUpperCase()).some((upper) => !SUPPORTED_CHAR_SET.has(upper))) found.add(ch);
+  }
+  return [...found];
+}
 
 export type ValidationResult =
   | { readonly ok: true }
@@ -133,8 +155,18 @@ function fail(issues: readonly ValidationIssue[]): ValidationResult {
 export function validatePhrase(phrase: string): ValidationResult {
   const issues: ValidationIssue[] = [];
 
-  if (phrase.trim().length > MAX_CHARS) {
+  // Checked on the normalized form, the one that gets stored: the editor
+  // validates raw textarea input, and a doubled space or a pasted zero-width
+  // character there must not fail a rule the saved phrase would pass.
+  const normalized = normalizePhrase(phrase);
+
+  if (normalized.length > MAX_CHARS) {
     issues.push({ field: 'phrase', code: 'too_long' });
+  }
+
+  const missing = unsupportedChars(normalized);
+  if (missing.length > 0) {
+    issues.push({ field: 'phrase', code: 'unsupported_chars', chars: missing });
   }
 
   const wordCount = splitWords(phrase).length;
