@@ -84,6 +84,17 @@ const grainCases: LabCase[] = [0, 1, 2, 3].map((grain) => ({
   }),
 }));
 
+// Regression guard for stack.ts's groupWords (debt 23). Stack tries every row
+// count from 1 to the word count; for this six-word phrase the five-row pass
+// used to let the greedy packer swallow every remaining word, leaving the
+// mandatory last group empty, and render() threw. Verified: with the
+// "reserve one word per owed group" line removed, this case crashes again.
+// Density does not matter - groupWords packs natural widths only.
+const stackGroupWordsCase: LabCase = {
+  id: 'stack-group-words-six-in-five',
+  spec: spec('Type is a system of decisions', { density: 'regular', invert: false, accent: null, seed: 23 }),
+};
+
 const breakGeometryCases: LabCase[] = GEOMETRY_PHRASES.flatMap(({ slug, phrase, seed }) =>
   (DENSITIES as readonly Density[]).map((density) => ({
     id: `break-${slug}-${density}`,
@@ -318,6 +329,7 @@ export const CASES: readonly LabCase[] = [
   ...geometryCases,
   ...colorCases,
   ...grainCases,
+  stackGroupWordsCase,
   ...breakGeometryCases,
   ...breakAccentCases,
   ...gridGeometryCases,
