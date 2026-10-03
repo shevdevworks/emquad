@@ -13,7 +13,7 @@ letters.
 
 ## Stack
 
-Next.js 16 (App Router) · TypeScript (strict) · Tailwind CSS v4 · Neon Postgres · Drizzle ORM · Turbopack
+Next.js 16 (App Router) · TypeScript (strict) · Tailwind CSS v4 · Neon Postgres · Drizzle ORM
 
 No canvas library, no SVG library, no font loader. The renderer is one module
 of plain TypeScript that returns a string — see [Architecture](#architecture)

@@ -12,9 +12,10 @@ export const metadata: Metadata = {
   // The image itself is app/opengraph-image.png, picked up by file convention:
   // Next fills in url, width, height and type from the file. Poster pages
   // override it with their own generated image, since their route is deeper.
-  // No opengraph-image.alt.txt here: that convention is implemented in the
-  // webpack metadata loader, and this project builds with Turbopack, so the
-  // file produced no og:image:alt tag in either dev or a production build.
+  // No opengraph-image.alt.txt here: the file was tried and produced no
+  // og:image:alt tag, so it was removed rather than left as dead weight. The
+  // poster pages set their own alt through the `alt` export in their
+  // opengraph-image.tsx, which does work.
   openGraph: {
     type: "website",
     siteName: TITLE,

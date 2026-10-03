@@ -7,7 +7,7 @@
  * validation logic lives in exactly one place. This file has to stay clean
  * of node: imports, fs, path, url and process: it is reachable from
  * app/(fixed)/gallery/page.tsx, and a dynamic filesystem access anywhere in
- * that chain makes Turbopack trace the whole project into the server build
+ * that chain makes the bundler trace the whole project into the server build
  * (seed/gallery-checks.ts used to do exactly that before the file split in
  * 7.4). It lives under lib/ rather than seed/ so the dependency runs
  * seed -> lib only: the application never imports out of seed/ for code,

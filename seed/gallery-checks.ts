@@ -3,7 +3,7 @@
  * a file given as an explicit path) by importing it as a module. Node-only
  * on purpose: process.cwd(), node:path and node:url are not safe to import
  * from app/(fixed)/gallery/page.tsx - a dynamic filesystem access anywhere
- * in that chain makes Turbopack trace the whole project into the server
+ * in that chain makes the bundler trace the whole project into the server
  * build. The pure validation logic that used to share this file lives in
  * lib/gallery/specs.ts instead, which the page imports directly.
  */
