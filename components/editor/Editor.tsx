@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { savePoster } from '@/actions/save-poster';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { savePoster, type SavePosterResult } from '@/actions/save-poster';
 import { SITE_ACCENT, TEXT_MUTED, TEXT_PRIMARY } from '@/lib/theme';
 import {
   AVAILABLE_MODES,
@@ -19,6 +19,7 @@ import {
 } from '@/lib/poster/types';
 import { searchParamsToSpec, specToSearchParams } from '@/lib/poster/url';
 import {
+  normalizePhrase,
   splitWords,
   validateParams,
   validatePhrase,
@@ -47,6 +48,11 @@ const DEBOUNCE_MS = 300;
 const ERROR_COLOR = '#FF6B5B';
 
 const RATE_LIMIT_MESSAGE = 'Too many saves in a row. Wait a minute and try again.';
+
+// Shown when the request never got an answer - the action threw rather than
+// returning a refusal. Phrased as something to retry, since nothing about the
+// poster is wrong.
+const SAVE_FAILED_MESSAGE = 'Could not reach the server. Check your connection and try again.';
 
 const GROUP_LABEL_STYLE = {
   fontFamily: 'Onest',
@@ -149,6 +155,21 @@ export function Editor({ initialSpec, initialSvg }: EditorProps) {
   // until the renderer arrives there is nothing to say otherwise.
   const [layoutFits, setLayoutFits] = useState(true);
 
+  // The textarea holds exactly what was typed or pasted; everything below it -
+  // the preview, the accent list, the address and Save - works on the
+  // normalized phrase, which is the precise string savePoster stores. Without
+  // this an invisible character (a soft hyphen out of a PDF, a zero-width
+  // space off a web page) reached the renderer, which has no glyph for it, and
+  // the editor reported a layout failure for a phrase that saves fine.
+  // Normalizing the textarea value itself is not an option: normalizePhrase
+  // trims, so the space that starts a new word would vanish as it is typed.
+  // Memoized to keep a stable identity - Preview compares its spec by
+  // reference and would otherwise redraw on every unrelated parent render.
+  const normalizedSpec = useMemo<PosterSpec>(
+    () => ({ phrase: normalizePhrase(spec.phrase), params: spec.params }),
+    [spec.phrase, spec.params],
+  );
+
   // Ref, not a boolean flag: React Strict Mode double-invokes the mount
   // effect in dev, and a flip-once boolean does not survive that second
   // call. Comparing against the original spec value does, since it stays
@@ -164,9 +185,11 @@ export function Editor({ initialSpec, initialSvg }: EditorProps) {
   useEffect(() => {
     if (spec === initialSpecRef.current) return;
 
-    debounceTimer.current = setTimeout(() => writeUrl(spec), DEBOUNCE_MS);
+    // The address carries the normalized phrase, so a reload or a back
+    // navigation rebuilds the state the preview is already showing.
+    debounceTimer.current = setTimeout(() => writeUrl(normalizedSpec), DEBOUNCE_MS);
     return () => clearTimeout(debounceTimer.current);
-  }, [spec]);
+  }, [spec, normalizedSpec]);
 
   function updateParams(patch: Partial<PosterParams>) {
     setSpec((s) => ({ ...s, params: { ...s.params, ...patch } }));
@@ -174,7 +197,8 @@ export function Editor({ initialSpec, initialSvg }: EditorProps) {
 
   function handlePhraseChange(value: string) {
     setSpec((s) => {
-      const wordCount = splitWords(value).length;
+      // Counted on the normalized form, the one the accent index points into.
+      const wordCount = splitWords(normalizePhrase(value)).length;
       const accent = s.params.accent !== null && s.params.accent >= wordCount ? null : s.params.accent;
       return { phrase: value, params: { ...s.params, accent } };
     });
@@ -192,10 +216,25 @@ export function Editor({ initialSpec, initialSvg }: EditorProps) {
     savingRef.current = true;
 
     clearTimeout(debounceTimer.current);
-    writeUrl(spec);
+    writeUrl(normalizedSpec);
     setSaveMessages([]);
     setIsSaving(true);
-    const result = await savePoster(spec.phrase, spec.params);
+
+    // The call itself can fail, not just come back refused: a dropped
+    // connection or a cold start that times out rejects the promise. Without
+    // this the rejection escaped as an unhandled one, isSaving stayed true and
+    // savingRef stayed latched - the button went grey and dead for good, with
+    // nothing on screen explaining why, and only a reload got out of it.
+    let result: SavePosterResult;
+    try {
+      result = await savePoster(normalizedSpec.phrase, normalizedSpec.params);
+    } catch {
+      setSaveMessages([SAVE_FAILED_MESSAGE]);
+      setIsSaving(false);
+      savingRef.current = false;
+      return;
+    }
+
     if (!result.ok) {
       setSaveMessages(
         result.reason === 'rate_limited' ? [RATE_LIMIT_MESSAGE] : result.issues.map(describeIssue),
@@ -205,15 +244,18 @@ export function Editor({ initialSpec, initialSvg }: EditorProps) {
     }
   }
 
-  const words = splitWords(spec.phrase);
+  // All three read the normalized phrase: the accent options have to be the
+  // words the renderer will actually draw, and validatePhrase normalizes
+  // internally anyway, so passing it the raw string would only hide that.
+  const words = splitWords(normalizedSpec.phrase);
   const wordCount = words.length;
-  const phraseResult = validatePhrase(spec.phrase);
-  const paramsResult = validateParams(spec.params, wordCount);
+  const phraseResult = validatePhrase(normalizedSpec.phrase);
+  const paramsResult = validateParams(normalizedSpec.params, wordCount);
   const ruleIssues: readonly ValidationIssue[] = [
     ...(phraseResult.ok ? [] : phraseResult.issues),
     ...(paramsResult.ok ? [] : paramsResult.issues),
   ];
-  const validSpec = ruleIssues.length === 0 ? spec : null;
+  const validSpec = ruleIssues.length === 0 ? normalizedSpec : null;
   // Layout is only known for a spec that passed the rules and went through
   // Preview; for any other spec the rule messages already say what is wrong.
   const liveIssues: readonly ValidationIssue[] =

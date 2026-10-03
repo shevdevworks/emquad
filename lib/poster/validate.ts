@@ -155,9 +155,13 @@ function fail(issues: readonly ValidationIssue[]): ValidationResult {
 export function validatePhrase(phrase: string): ValidationResult {
   const issues: ValidationIssue[] = [];
 
-  // Checked on the normalized form, the one that gets stored: the editor
-  // validates raw textarea input, and a doubled space or a pasted zero-width
-  // character there must not fail a rule the saved phrase would pass.
+  // Every rule below reads the normalized form, the one that gets stored: the
+  // editor validates raw textarea input, and a doubled space or a pasted
+  // zero-width character there must not fail a rule the saved phrase would
+  // pass. The word count used to be the exception, counted on the raw string -
+  // which let "ONE TWO <zero-width>" through as three words and stored it as
+  // two, and made the accent range check trust a word that does not survive
+  // normalization. One string for all three rules, or they disagree.
   const normalized = normalizePhrase(phrase);
 
   if (normalized.length > MAX_CHARS) {
@@ -169,7 +173,7 @@ export function validatePhrase(phrase: string): ValidationResult {
     issues.push({ field: 'phrase', code: 'unsupported_chars', chars: missing });
   }
 
-  const wordCount = splitWords(phrase).length;
+  const wordCount = splitWords(normalized).length;
   if (wordCount < MIN_WORDS) {
     issues.push({ field: 'phrase', code: 'too_few_words' });
   } else if (wordCount > MAX_WORDS) {
@@ -203,7 +207,9 @@ export function validateParams(params: PosterParams, wordCount: number): Validat
 }
 
 export function validatePosterSpec(spec: PosterSpec): ValidationResult {
-  const wordCount = splitWords(spec.phrase).length;
+  // Normalized, like every rule in validatePhrase: accent is an index into the
+  // words of the phrase that gets stored, not into whatever was typed.
+  const wordCount = splitWords(normalizePhrase(spec.phrase)).length;
   const phraseResult = validatePhrase(spec.phrase);
   const paramsResult = validateParams(spec.params, wordCount);
 
