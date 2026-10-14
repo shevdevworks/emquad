@@ -5,6 +5,8 @@ import * as crypto from 'node:crypto';
 import {
   DEFAULT_PARAMS,
   DENSITIES,
+  GRAIN_LEVELS,
+  MAX_SEED,
   MODES,
   POSTER_HEIGHT,
   POSTER_WIDTH,
@@ -12,7 +14,10 @@ import {
   type Density,
   type PosterSpec,
 } from '../lib/poster/types';
-import { render } from '../lib/poster/render';
+import { ACCENT_COLOR, render } from '../lib/poster/render';
+import { DEFAULT_SPEC, editorHref, searchParamsToSpec } from '../lib/poster/url';
+import { specsDeepEqual } from '../lib/gallery/specs';
+import { SITE_ACCENT } from '../lib/theme';
 import { normalizePhrase, splitWords, validatePosterSpec } from '../lib/poster/validate';
 import { NoGlyphPathError } from '../lib/poster/glyph-bounds';
 import { mulberry32 } from '../lib/poster/primitives';
@@ -543,6 +548,62 @@ if (columnShrinkCases.length > 0) {
     `[${ok ? 'PASS' : 'FAIL'}] sweep: ${valid} valid specs, ${noLayout} without a layout (refused by tryRender), ${failures.length} failures${ok ? '' : '!'}`,
   );
   for (const f of failures.slice(0, 10)) console.log(`  ${f}`);
+}
+
+// Edit this poster and Open in editor hand a poster to the editor through its
+// address. The address has to carry every parameter there and back: a field
+// dropped or misread on the way would open the editor on a different poster,
+// and saving it would quietly produce something else. Random valid specs over
+// every field, plus the default spec, whose address is the bare /create.
+{
+  const rng = mulberry32(20261014);
+  const randomInt = (n: number) => Math.floor(rng() * n);
+  const phrases = ['every phrase has a shape', 'Half the city is asleep', 'тихо падає сніг вночі', 'ONE, TWO & THREE!'];
+  const specs: PosterSpec[] = [DEFAULT_SPEC];
+  for (let i = 0; i < 400; i++) {
+    const phrase = phrases[randomInt(phrases.length)];
+    const wordCount = splitWords(phrase).length;
+    const accentSlot = randomInt(wordCount + 1);
+    specs.push({
+      phrase,
+      params: {
+        ...DEFAULT_PARAMS,
+        mode: MODES[randomInt(MODES.length)],
+        invert: rng() < 0.5,
+        accent: accentSlot === wordCount ? null : accentSlot,
+        density: DENSITIES[randomInt(DENSITIES.length)],
+        grain: GRAIN_LEVELS[randomInt(GRAIN_LEVELS.length)],
+        seed: randomInt(MAX_SEED + 1),
+      },
+    });
+  }
+  const failures: string[] = [];
+  for (const spec of specs) {
+    const url = new URL(editorHref(spec), 'https://emquad.test');
+    const back = searchParamsToSpec(url.searchParams);
+    if (url.pathname !== '/create' || !specsDeepEqual(spec, back)) {
+      failures.push(`${editorHref(spec)} -> ${JSON.stringify(back)}`);
+    }
+  }
+  const ok = failures.length === 0;
+  if (!ok) exactFailures++;
+  console.log(`[${ok ? 'PASS' : 'FAIL'}] editorHref round trip: ${specs.length} specs, ${failures.length} failures${ok ? '' : '!'}`);
+  for (const f of failures.slice(0, 10)) console.log(`  ${f}`);
+}
+
+// The interface accent is the poster's own green, declared in three places
+// that cannot import each other cheaply: the renderer, lib/theme.ts and the
+// --emq-accent token in app/globals.css. If they drift, the site's buttons
+// stop matching the posters they produce.
+{
+  const css = fs.readFileSync(path.resolve(process.cwd(), 'app', 'globals.css'), 'utf-8');
+  const token = /--emq-accent:\s*(#[0-9a-fA-F]{6})/.exec(css)?.[1] ?? '';
+  const ok =
+    SITE_ACCENT.toLowerCase() === ACCENT_COLOR.toLowerCase() && token.toLowerCase() === ACCENT_COLOR.toLowerCase();
+  if (!ok) exactFailures++;
+  console.log(
+    `[${ok ? 'PASS' : 'FAIL'}] interface accent matches poster accent (render ${ACCENT_COLOR}, theme ${SITE_ACCENT}, css ${token || 'missing'})${ok ? '' : '!'}`,
+  );
 }
 
 console.log(

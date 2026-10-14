@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import type { PosterSpec } from '@/lib/poster/types';
+import { splitWords } from '@/lib/poster/validate';
 
 export interface PreviewProps {
   // null means the current spec is invalid; Preview keeps showing the last
@@ -10,6 +11,14 @@ export interface PreviewProps {
   readonly initialSvg: string;
   /** Told whether the latest spec has a layout in its mode; see tryRender in render.ts. */
   readonly onFitChange: (fits: boolean) => void;
+  /**
+   * Set when the poster on screen is not the one the current input describes
+   * - the input breaks a rule, or has no layout in its mode. The last good
+   * frame stays up so the screen does not flash, but it is dimmed and labelled
+   * so nobody mistakes it for the result of what they typed.
+   */
+  readonly staleNote: string | null;
+  readonly staleNoteId: string;
 }
 
 // tryRender, not render: a valid spec can still have no layout in its mode,
@@ -23,11 +32,34 @@ interface Rendered {
   readonly fn: RenderFn | null;
   /** False when the latest spec could not be laid out; `svg` then still holds the last frame that could. */
   readonly fits: boolean;
+  /** The spec the visible frame actually shows - differs from `spec` when that one did not fit. */
+  readonly shown: PosterSpec | null;
 }
 
-export function Preview({ spec, initialSvg, onFitChange }: PreviewProps) {
+/** What the poster on screen shows, in words, for screen readers. */
+function describePoster(spec: PosterSpec | null): string {
+  if (spec === null) return 'Poster preview';
+  const { mode, density, grain, invert, accent } = spec.params;
+  const words = splitWords(spec.phrase);
+  const parts = [
+    `${mode} composition`,
+    `${density} density`,
+    grain === 0 ? 'no grain' : `grain ${grain}`,
+    invert ? 'black on white' : 'white on black',
+  ];
+  if (accent !== null && words[accent] !== undefined) parts.push(`accent on "${words[accent].toUpperCase()}"`);
+  return `Poster preview reading "${spec.phrase.toUpperCase()}": ${parts.join(', ')}.`;
+}
+
+export function Preview({ spec, initialSvg, onFitChange, staleNote, staleNoteId }: PreviewProps) {
   const [renderFn, setRenderFn] = useState<RenderFn | null>(null);
-  const [rendered, setRendered] = useState<Rendered>({ svg: initialSvg, spec: null, fn: null, fits: true });
+  const [rendered, setRendered] = useState<Rendered>({
+    svg: initialSvg,
+    spec: null,
+    fn: null,
+    fits: true,
+    shown: null,
+  });
 
   useEffect(() => {
     let cancelled = false;
@@ -49,7 +81,13 @@ export function Preview({ spec, initialSvg, onFitChange }: PreviewProps) {
   // invalid spec (null) simply keeps the last good SVG on screen.
   if (spec !== null && renderFn !== null && (spec !== rendered.spec || renderFn !== rendered.fn)) {
     const svg = renderFn(spec);
-    setRendered({ svg: svg ?? rendered.svg, spec, fn: renderFn, fits: svg !== null });
+    setRendered({
+      svg: svg ?? rendered.svg,
+      spec,
+      fn: renderFn,
+      fits: svg !== null,
+      shown: svg !== null ? spec : rendered.shown,
+    });
   }
 
   // The parent's messages live in its own state, which cannot be set during
@@ -59,5 +97,26 @@ export function Preview({ spec, initialSvg, onFitChange }: PreviewProps) {
     onFitChange(rendered.fits);
   }, [rendered.fits, onFitChange]);
 
-  return <div className="emq-editor-preview-slot" dangerouslySetInnerHTML={{ __html: rendered.svg }} />;
+  const stale = staleNote !== null;
+
+  return (
+    <div className="emq-editor-preview-frame" data-stale={stale}>
+      <div
+        className="emq-editor-preview-slot"
+        role="img"
+        aria-label={describePoster(rendered.shown ?? spec)}
+        aria-describedby={stale ? staleNoteId : undefined}
+        dangerouslySetInnerHTML={{ __html: rendered.svg }}
+      />
+      {stale && (
+        <p id={staleNoteId} className="emq-editor-stale">
+          <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">
+            <path d="M8 1.5 15 14H1z" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinejoin="round" />
+            <path d="M8 6v3.6M8 11.4v.1" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+          </svg>
+          {staleNote}
+        </p>
+      )}
+    </div>
+  );
 }

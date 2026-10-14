@@ -3,6 +3,7 @@ import type { Metadata } from 'next';
 import { notFound } from 'next/navigation';
 import { tryRender } from '@/lib/poster/render';
 import { getPosterByCode, posterSpecFromRow } from '@/lib/db/queries';
+import { editorHref } from '@/lib/poster/url';
 import { PosterDisplay } from '@/components/poster/PosterDisplay';
 import { posterRobots, posterJsonLd, serializeJsonLd } from '@/lib/seo/poster-seo';
 
@@ -40,7 +41,8 @@ export default async function Page({
   // Save refuses specs with no layout, so a row that cannot render predates
   // that check or was written by hand. A 404 is the honest answer: there is
   // no poster to show, and a 500 would read as the site being down.
-  const svg = tryRender(posterSpecFromRow(row));
+  const spec = posterSpecFromRow(row);
+  const svg = tryRender(spec);
   if (svg === null) notFound();
   const jsonLd = posterJsonLd({ code, phrase: row.phrase, inGallery: row.inGallery });
 
@@ -52,7 +54,7 @@ export default async function Page({
           dangerouslySetInnerHTML={{ __html: serializeJsonLd(jsonLd) }}
         />
       )}
-      <PosterDisplay svg={svg} code={code} phrase={row.phrase} />
+      <PosterDisplay svg={svg} code={code} phrase={row.phrase} mode={spec.params.mode} editHref={editorHref(spec)} />
     </>
   );
 }

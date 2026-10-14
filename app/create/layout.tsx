@@ -8,5 +8,5 @@ export const metadata: Metadata = {
 };
 
 export default function CreateLayout({ children }: { children: React.ReactNode }) {
-  return <GlobalChrome mode="flow">{children}</GlobalChrome>;
+  return <GlobalChrome backdrop="calm">{children}</GlobalChrome>;
 }

@@ -45,6 +45,16 @@ export function specToSearchParams(spec: PosterSpec): URLSearchParams {
   return params;
 }
 
+/**
+ * Address of the editor opened on `spec` - every parameter of it, so the
+ * editor starts from exactly this poster. The editor never writes back to the
+ * poster it was opened from: Save always produces a result of its own.
+ */
+export function editorHref(spec: PosterSpec): string {
+  const qs = specToSearchParams(spec).toString();
+  return qs ? `/create?${qs}` : '/create';
+}
+
 export function searchParamsToSpec(params: URLSearchParams): PosterSpec {
   const phraseRaw = params.get('phrase');
   const phraseCandidate = phraseRaw === null ? DEFAULT_SPEC.phrase : normalizePhrase(phraseRaw);

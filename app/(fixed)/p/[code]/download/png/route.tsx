@@ -1,7 +1,13 @@
 import { ImageResponse } from 'next/og';
 import { tryRender } from '@/lib/poster/render';
 import { getPosterByCode, posterSpecFromRow } from '@/lib/db/queries';
-import { posterFileName, asciiFileName, contentDisposition } from '@/lib/poster/filename';
+import {
+  posterFileName,
+  asciiFileName,
+  contentDisposition,
+  PNG_EXPORT_HEIGHT,
+  PNG_EXPORT_WIDTH,
+} from '@/lib/poster/filename';
 
 export const runtime = 'nodejs';
 
@@ -23,11 +29,11 @@ export async function GET(
   return new ImageResponse(
     (
       // eslint-disable-next-line @next/next/no-img-element
-      <img src={svgDataUrl} width={2160} height={2700} alt="" />
+      <img src={svgDataUrl} width={PNG_EXPORT_WIDTH} height={PNG_EXPORT_HEIGHT} alt="" />
     ),
     {
-      width: 2160,
-      height: 2700,
+      width: PNG_EXPORT_WIDTH,
+      height: PNG_EXPORT_HEIGHT,
       headers: {
         'Content-Disposition': contentDisposition(name, fallback),
         'Cache-Control': 'public, max-age=31536000, immutable',

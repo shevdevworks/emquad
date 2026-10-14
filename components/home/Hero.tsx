@@ -7,6 +7,15 @@ export function Hero() {
   return (
     <div className="flex flex-1 flex-col items-center gap-10 lg:flex-row lg:items-center lg:justify-between lg:gap-[72px] lg:pr-6">
       <style>{`
+        /* The hero keeps its original translucent glass. The site-wide
+           .emq-glass became a near-opaque surface, which would turn the card
+           into a dark slab. */
+        .emq-hero-glass {
+          background: rgba(255, 255, 255, 0.04);
+          border: 1px solid rgba(255, 255, 255, 0.1);
+          backdrop-filter: blur(12px);
+          -webkit-backdrop-filter: blur(12px);
+        }
         .emq-card-wrap {
           position: relative;
           perspective: 1200px;
@@ -101,7 +110,7 @@ export function Hero() {
           </Link>
           <Link
             href="/gallery"
-            className="emq-glass inline-flex items-center justify-center px-6 py-3 transition-opacity hover:opacity-90"
+            className="emq-hero-glass inline-flex items-center justify-center px-6 py-3 transition-opacity hover:opacity-90"
             style={{
               color: TEXT_PRIMARY,
               borderRadius: '8px',
@@ -115,7 +124,9 @@ export function Hero() {
           </Link>
         </div>
 
-        <div className="flex gap-8 pt-2">
+        {/* Wraps only on the narrowest phones: below 360px the three columns
+            ran past the screen edge. Wider, the row stays one line as before. */}
+        <div className="flex gap-x-8 gap-y-4 pt-2 max-[359px]:flex-wrap">
           {[
             { label: 'COMPUTED', text: 'The layout comes from the letters, not a template.' },
             { label: 'CONTROLLED', text: 'Every parameter is yours to move.' },
@@ -144,7 +155,7 @@ export function Hero() {
       {/* '--accent' is a custom property, not a standard CSSProperties key - same
           pattern the removed MOTION layer used for '--drift-duration'. */}
       <div className="emq-card-wrap shrink-0" style={{ ['--accent' as string]: SITE_ACCENT }}>
-        <div className="emq-card emq-glass">
+        <div className="emq-card emq-hero-glass">
           <div
             style={{
               fontFamily: 'Onest',

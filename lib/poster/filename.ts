@@ -1,3 +1,14 @@
+import { POSTER_HEIGHT, POSTER_WIDTH } from './types';
+
+/**
+ * Pixel size of the PNG download: the poster canvas at twice its size. Read
+ * by the PNG route that produces the file and by the poster page that labels
+ * the button, so the label cannot promise a size the file does not have.
+ */
+export const PNG_EXPORT_SCALE = 2;
+export const PNG_EXPORT_WIDTH = POSTER_WIDTH * PNG_EXPORT_SCALE;
+export const PNG_EXPORT_HEIGHT = POSTER_HEIGHT * PNG_EXPORT_SCALE;
+
 export function posterSlug(phrase: string): string {
   let slug = phrase
     .toLowerCase()
