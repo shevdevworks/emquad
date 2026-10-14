@@ -3,7 +3,7 @@ import { SITE_URL } from "@/lib/site";
 import "./globals.css";
 
 const TITLE = "Emquad";
-const DESCRIPTION = "Typographic poster generator.";
+const DESCRIPTION = "Create typographic posters with five custom layouts, live previews and SVG or PNG export.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),

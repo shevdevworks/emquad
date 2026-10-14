@@ -72,3 +72,6 @@ docs/handoff.md
 
 # local scrap folder, never part of the project
 _emquad-scrap/
+
+# local portfolio media, not part of the deployed application
+/exports/
